@@ -14,14 +14,16 @@
 }
 
 .logo {
-  color: #000000;
-  font-size: 2rem;
   display: block;
-  margin: 0 0 0rem 0;
-  padding: 0;
-  width: auto;
+  margin: 10px 0;
+  height: 50px;
   align-items: flex-start;
+}
 
+.logo img {
+  height: 70px;
+  max-width: 100%;
+  object-fit: contain; /* optional, but can help in some layouts */
 }
 
 .nav-links {
