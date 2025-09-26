@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import Post from './Post.jsx';
 
 const mockPosts = [
-  { id: 1, type: 'default', content: 'Excited about my new project!', timestamp: Date.now() - 3600000 },
-  { id: 2, type: 'default', content: 'Just finished a major sprint.', timestamp: Date.now() - 7200000 },
-  { id: 3, type: 'default', content: 'Learning about React components.Learning about React components.Learning about React components.Learning about React components.Learning about React components.Learning about React components.', timestamp: Date.now() - 10800000 },
+  { id: 1, type: 'dem', content: 'Excited about my new project!', timestamp: Date.now() - 3600000 },
+  { id: 2, type: 'dem', content: 'Just finished a major sprint.', timestamp: Date.now() - 7200000 },
+  { id: 3, type: 'rep', content: 'Learning about React components.Learning about React components.Learning about React components.Learning about React components.Learning about React components.Learning about React components.', timestamp: Date.now() - 10800000 },
 ];
 
 const Feed = () => {
