@@ -1,0 +1,42 @@
+:root {
+  --color-default: #4f80c1;
+  --color-news: #d9534f;
+  --color-opinion: #f0ad4e;
+}
+
+.post-container {
+  border: 1px solid var(--post-color);
+  margin-bottom: 20px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  max-width: 600px;
+}
+
+.post-section, .post-header, .post-footer {
+  background-color: var(--post-color); 
+  color: white;
+  padding: 10px 15px;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  font-size: 0.9em;
+}
+
+.post-body {
+  background-color: white; 
+  padding: 15px;
+}
+
+.summary {
+  color: black; 
+  margin: 0;
+  line-height: 1.5;
+}
+
+.read-more {
+    color: var(--post-color);
+    font-weight: bold;
+    cursor: pointer;
+    margin-left: 5px;
+}
