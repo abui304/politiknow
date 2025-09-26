@@ -3,7 +3,7 @@ import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
 import NavBar from "./components/NavBar";
 import './App.css';
-import Feed from './components/Feed.jsx';
+import Feed from './components/Feed';
 
 
 function MyButton() {
@@ -18,7 +18,7 @@ function App() {
   const [count, setCount] = useState(0)
 
   return (
-    <div className="app-layout">
+    <div>
       <NavBar />
       <main className="main-content">
         <Feed />
