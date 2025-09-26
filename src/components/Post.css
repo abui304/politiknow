@@ -1,10 +1,10 @@
 :root {
-  --color-default: #4f80c1;
-  --color-news: #d9534f;
+  --color-dem: #657fad;
+  --color-rep: #ff6961;
   --color-opinion: #f0ad4e;
 }
 
-.post-container {
+.post {
   border: 1px solid var(--post-color);
   margin-bottom: 20px;
   border-radius: 8px;
