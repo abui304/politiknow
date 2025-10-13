@@ -12,10 +12,20 @@
   max-width: 600px;
 }
 
-.post-section, .post-header, .post-footer {
+.post-section, .post-header {
   background-color: var(--post-color); 
   color: white;
   padding: 10px 15px;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  font-size: 0.9em;
+}
+
+.post-footer {
+  background-color: var(--post-color); 
+  color: white;
+  padding: 0;
   display: flex;
   justify-content: flex-start;
   align-items: center;
@@ -39,4 +49,30 @@
     font-weight: bold;
     cursor: pointer;
     margin-left: 5px;
+}
+
+.likes {
+  font-weight: bold;
+  font-size: 1.1em;
+  padding: 0;
+  min-width: 30px;
+  text-align: center;
+  border-radius: 4px;
+  transition: color 0.3s, background-color 0.3s;
+}
+
+
+.like-button.voted-active,
+.dislike-button.voted-active {
+  color: var(--voted-active-color);
+}
+
+.like-button,
+.dislike-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  font-weight: bold;
+  transition: background-color 0.2s, transform 0.1s;
 }
