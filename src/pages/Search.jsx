@@ -2,11 +2,31 @@ import React, { useState } from 'react'
 import './Search.css';
 
 function Search() {
-    const [count, setCount] = useState(0)
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const handleInputChange = (event) => {
+        setSearchTerm(event.target.value);
+    };
+
+    const handleSearch = (event) => {
+        event.preventDefault();
+        // Start search API call here (whatever that means)
+    }
 
   return (
     <div>
-      <h1>Search Results</h1>
+      <form onSubmit={handleSearch} className = "search-form">
+        <input 
+            type="text"
+            placeholder="Search for a bill..."
+            value={searchTerm}
+            onChange={handleInputChange}
+            className="search-input"
+        />
+        <button type="submit" className="search-button">
+            Search
+        </button>
+      </form>
     </div>
   )
 }

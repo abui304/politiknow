@@ -4,13 +4,13 @@ import NavBar from "./components/NavBar";
 import Feed from './components/Feed';
 import './App.css';
 import Search from './pages/Search';
+import Profile from './pages/Profile';
+import Settings from './pages/Settings';
 
 
 function HomePage() {
   return (
-    <main className ="main-content">
-      <Feed />
-    </main>
+    <Feed />
   );
 }
 
@@ -18,14 +18,15 @@ function App() {
   return (
     <Router>
       <NavBar />
-
-      <Routes>
-        <Route path="/home" element={<HomePage />} />
-        <Route path="/" element={<HomePage />} />
-        <Route path="/search" element={<Search />} />
-        <Route path="/profile" element={<h1>Profile Page</h1>} />
-        <Route path="/settings" element={<h1>Settings Page</h1>} />
-      </Routes>
+      <main className ="main-content">
+        <Routes>
+          <Route path="/home" element={<HomePage />} />
+          <Route path="/" element={<HomePage />} />
+          <Route path="/search" element={<Search />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/settings" element={<Settings />} />
+        </Routes>
+      </main>
     </Router>
   );
 }
