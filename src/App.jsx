@@ -1,30 +1,33 @@
 import React, { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import NavBar from "./components/NavBar";
-import './App.css';
 import Feed from './components/Feed';
+import './App.css';
+import Search from './pages/Search';
 
 
-function MyButton() {
+function HomePage() {
   return (
-    <button>
-      Press Me...
-    </button>
-  )
+    <main className ="main-content">
+      <Feed />
+    </main>
+  );
 }
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <div>
+    <Router>
       <NavBar />
-      <main className="main-content">
-        <Feed />
-      </main>
-    </div>
-  )
+
+      <Routes>
+        <Route path="/home" element={<HomePage />} />
+        <Route path="/" element={<HomePage />} />
+        <Route path="/search" element={<Search />} />
+        <Route path="/profile" element={<h1>Profile Page</h1>} />
+        <Route path="/settings" element={<h1>Settings Page</h1>} />
+      </Routes>
+    </Router>
+  );
 }
 
 export default App
