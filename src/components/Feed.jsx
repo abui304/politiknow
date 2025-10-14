@@ -12,8 +12,6 @@ const Feed = () => {
 
   return (
     <div className="feed-container">
-      <h2>Latest Posts</h2>
-      {}
       {posts.map(post => (
         <Post 
           key={post.id} 

@@ -1,7 +1,7 @@
 import React, {useState} from 'react';
 import './Post.css';
 
-const MAX_LEN = 150; // char limit
+const MAX_LEN = 250; // char limit
 
 const Post = ({ content, type, timestamp, initialLikes = 0 }) => {
     const [likes, setLikes] = useState(initialLikes);
@@ -35,9 +35,10 @@ const Post = ({ content, type, timestamp, initialLikes = 0 }) => {
 
     let activeColor;
     if (type === 'dem') {
-        activeColor = '#002566';
+        activeColor = '#657fad';
     } else if (type === 'rep') {
-        activeColor = '#cc2936';
+        activeColor = '#ff6961';
+        
     }
 
     const shouldCut = content.length > MAX_LEN;
@@ -53,10 +54,11 @@ const Post = ({ content, type, timestamp, initialLikes = 0 }) => {
 
     return (
         <div className="post" style={postStyle}>
-            <div className="post-header">
+            <div className="post-header"> 
                 <span className="post-timestamp">
                     {new Date(timestamp).toLocaleDateString()}
                 </span>
+                
             </div>
             <div className="post-body">
                 <p className="summary">{displayedContent}</p>
