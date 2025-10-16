@@ -19,6 +19,11 @@ const postSchema = new mongoose.Schema({
         type: String,
         required: true, 
     },
+    sourceBillId: {
+        type: String,
+        required: true,
+        unique: true,
+    },
     likes: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
