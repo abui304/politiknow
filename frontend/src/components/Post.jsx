@@ -57,7 +57,7 @@ const Post = ({ postData }) => {
     return (
         <div className="post" style={postStyle}>
             <div className="post-header"> 
-                <h3 className="post-title">{billTitle}</h3>
+                <div className="post-title">{billTitle}</div>
                 <span className="post-timestamp">
                     {new Date(createdAt).toLocaleDateString()}
                 </span>

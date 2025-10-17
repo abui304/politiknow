@@ -30,9 +30,42 @@ const fetchAndPostBills = async () => {
         console.log('Fetching bills from external source...');
         const fetchedBills = [
             // This is MOCK DATA for demonstration. A real API would provide this.
-            { id: 'hr-123-118', title: 'National Donut Appreciation Act', text: 'This bill mandates that every Friday shall be national donut day, encouraging citizens to partake in delicious fried dough treats to boost morale and support local bakeries.', sponsor: { party: 'D' } },
-            { id: 's-456-118', title: 'Universal Puppy Ownership Bill', text: 'To promote happiness and reduce stress, this bill provides a tax credit for any family that adopts a puppy. It also establishes national standards for puppy cuddliness.',  sponsor: { party: 'R' } },
-            { id: 'hr-4350-117', title: 'National Defense Authorization Act for Fiscal Year 2022', text: 'This bill authorizes fiscal year 2022 appropriations for military activities and construction, and for defense activities of the Department of Energy.',  sponsor: { party: 'I' }} // A real example
+            { 
+                id: 'hr-5376-117', 
+                title: 'Inflation Reduction Act of 2022', 
+                text: 'This bill aims to curb inflation by lowering prescription drug costs, promoting clean energy production through tax credits, and imposing a new minimum tax on large corporations. Key provisions include allowing Medicare to negotiate drug prices, investing billions in climate initiatives to reduce carbon emissions, and funding the IRS to increase tax enforcement. Supporters argue it lowers healthcare costs and combats climate change, while critics raise concerns about its potential impact on inflation and corporate investment.', 
+                sponsor: { party: 'D' } 
+            },
+            { 
+                id: 'hr-1-115', 
+                title: 'Tax Cuts and Jobs Act of 2017', 
+                text: 'This act represents a major overhaul of the U.S. tax code, significantly cutting the corporate tax rate from 35% to 21% and temporarily reducing individual income tax rates across most brackets. It also nearly doubles the standard deduction while limiting or eliminating others, such as the deduction for state and local taxes (SALT). Proponents claim the cuts stimulate economic growth and job creation, while opponents argue they disproportionately benefit corporations and the wealthy, leading to a significant increase in the national debt.', 
+                sponsor: { party: 'R' } 
+            },
+            {
+                id: 'hr-3590-111',
+                title: 'Patient Protection and Affordable Care Act',
+                text: 'Known as the ACA, this act overhauls the U.S. healthcare system. Its main goals are to increase the number of insured Americans and decrease the overall cost of healthcare. It achieves this through a combination of mandates, subsidies, and insurance exchanges. The law requires most individuals to have health insurance, offers tax credits to make insurance more affordable, expands the Medicaid program to cover more low-income adults, and supports innovative medical care delivery methods designed to lower the costs of health care generally.',
+                sponsor: { party: 'D' }
+            },
+            {
+                id: 'hr-1319-117',
+                title: 'American Rescue Plan Act of 2021',
+                text: 'This is a comprehensive COVID-19 relief package designed to address the continued economic and health-related impacts of the pandemic. It includes direct stimulus payments to individuals, an extension of federal unemployment benefits, funding for state and local governments, and resources for vaccination programs and school reopenings. The legislation also provides significant financial aid for small businesses and includes provisions for an expanded child tax credit.',
+                sponsor: { party: 'D' }
+            },
+            {
+                id: 'hr-5682-115',
+                title: 'First Step Act',
+                text: 'A bipartisan criminal justice reform bill that aims to reduce recidivism and decrease the federal prison population. It retroactively applies the Fair Sentencing Act of 2010 to reduce sentences for certain crack-cocaine offenses, expands job training and rehabilitative programs for inmates, and revises mandatory minimum sentencing laws. The act allows some federal inmates to earn early release to halfway houses or home confinement for good behavior.',
+                sponsor: { party: 'R' }
+            },
+            {
+                id: 'hr-3162-107',
+                title: 'USA PATRIOT Act',
+                text: 'Enacted shortly after the September 11th attacks, this act stands for "Uniting and Strengthening America by Providing Appropriate Tools Required to Intercept and Obstruct Terrorism." It significantly expanded the surveillance powers of U.S. law enforcement and intelligence agencies, allowing for increased wiretapping, monitoring of internet communications, and access to records. The goal was to enhance national security by improving information sharing and removing legal barriers to terrorism investigation.',
+                sponsor: { party: 'R' }
+            },
         ];
 
         // Step 3: Process each fetched bill.

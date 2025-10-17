@@ -17,7 +17,7 @@ const summarizeText = async (text) => {
                 },
                 {
                     role: "user",
-                    content: 'Please summarize the following bill text: "${text}"'
+                    content: `Please summarize the following bill text: "${text}"`
                 }
             ],
             // max_tokens: XXX (set Value)
