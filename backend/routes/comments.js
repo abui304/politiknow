@@ -16,6 +16,6 @@ router.get('/', getCommentsForPost);
 
 // route to add a new conment to a post (protected)
 // corresponds to POST
-router.post('/', protect, addCommentsToPost);
+router.post('/', protect, addCommentToPost);
 
 module.exports = router;

@@ -1,0 +1,20 @@
+// This middleware will catch any errors that occur in your routes
+// and send a nicely formatted JSON response instead of a crash.
+
+const errorHandler = (err, req, res, next) => {
+    // If a status code was set on the response, use it. Otherwise, default to 500 (Server Error).
+    const statusCode = res.statusCode ? res.statusCode : 500;
+
+    res.status(statusCode);
+
+    res.json({
+        message: err.message,
+        // In production, you might not want to show the error stack trace
+        // but it's very useful for development.
+        stack: process.env.NODE_ENV === 'production' ? null : err.stack,
+    });
+};
+
+module.exports = {
+    errorHandler,
+};

@@ -1,8 +1,8 @@
 const asyncHandler = require('express-async-handler');
-const Comment = require('../models/comment');
+const Comment = require('../models/Comment');
 const Post = require('../models/post');
 
-const getCommentForPost = asyncHandler(async (req, res) => {
+const getCommentsForPost = asyncHandler(async (req, res) => {
     const { postId } = req.params;
     const comments = await Comment.find({ post: postId }).populate('user', 'username');
     res.status(200).json(comments);

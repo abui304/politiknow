@@ -9,8 +9,8 @@ const commentSchema = new mongoose.Schema({
         ref:'Post', // reference to the post the comment belongs to
     },
     user: {
-        type: mongoose.Schema.Types.OnjectId,
-        requred: true,
+        type: mongoose.Schema.Types.ObjectId,
+        required: true,
         ref: 'User', // reference to the user who made the comment
     },
     text: {

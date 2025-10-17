@@ -4,6 +4,13 @@ const User = require('../models/user');
 const Post = require('../models/post');
 const { summarizeText } = require('../services/openaiService');
 
+const getPartyEnum = (apiParty) => {
+    if (apiParty === 'D') return 'dem';
+    if (apiParty === 'R') return 'rep';
+    if (apiParty === 'I' || apiParty === 'ID') return 'ind';
+    return 'other';
+}
+
 const fetchAndPostBills = async () => {
     console.log('Starting bill fetch job...');
     
@@ -23,9 +30,9 @@ const fetchAndPostBills = async () => {
         console.log('Fetching bills from external source...');
         const fetchedBills = [
             // This is MOCK DATA for demonstration. A real API would provide this.
-            { id: 'hr-123-118', title: 'National Donut Appreciation Act', text: 'This bill mandates that every Friday shall be national donut day, encouraging citizens to partake in delicious fried dough treats to boost morale and support local bakeries.' },
-            { id: 's-456-118', title: 'Universal Puppy Ownership Bill', text: 'To promote happiness and reduce stress, this bill provides a tax credit for any family that adopts a puppy. It also establishes national standards for puppy cuddliness.' },
-            { id: 'hr-4350-117', title: 'National Defense Authorization Act for Fiscal Year 2022', text: 'This bill authorizes fiscal year 2022 appropriations for military activities and construction, and for defense activities of the Department of Energy.'} // A real example
+            { id: 'hr-123-118', title: 'National Donut Appreciation Act', text: 'This bill mandates that every Friday shall be national donut day, encouraging citizens to partake in delicious fried dough treats to boost morale and support local bakeries.', sponsor: { party: 'D' } },
+            { id: 's-456-118', title: 'Universal Puppy Ownership Bill', text: 'To promote happiness and reduce stress, this bill provides a tax credit for any family that adopts a puppy. It also establishes national standards for puppy cuddliness.',  sponsor: { party: 'R' } },
+            { id: 'hr-4350-117', title: 'National Defense Authorization Act for Fiscal Year 2022', text: 'This bill authorizes fiscal year 2022 appropriations for military activities and construction, and for defense activities of the Department of Energy.',  sponsor: { party: 'I' }} // A real example
         ];
 
         // Step 3: Process each fetched bill.
@@ -50,6 +57,7 @@ const fetchAndPostBills = async () => {
                 originalText: bill.text,
                 summary: summary,
                 sourceBillId: bill.id,
+                party: getPartyEnum(bill.sponsor.party),
             });
 
             await newPost.save();

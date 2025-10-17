@@ -11,6 +11,11 @@ const postSchema = new mongoose.Schema({
         required: [true, 'Please add a bill title'],
         trim: true,
     },
+    party: {
+        type: String,
+        required: true,
+        enum: ['dem', 'rep', 'ind', 'other'],
+    },
     originalText: {
         type: String,
         required: [true, 'Please add the orginal text of the bill'],

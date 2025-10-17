@@ -3,8 +3,9 @@ import './Post.css';
 
 const MAX_LEN = 250; // char limit
 
-const Post = ({ content, type, timestamp, initialLikes = 0 }) => {
-    const [likes, setLikes] = useState(initialLikes);
+const Post = ({ postData }) => {
+    const { billTitle, summary, party, createdAt, likes } = postData;
+    const [likeCount, setLikes] = useState(likes.length);
     const [userVote, setUserVote] = useState(null);
 
     const handleLike = () => {
@@ -34,17 +35,18 @@ const Post = ({ content, type, timestamp, initialLikes = 0 }) => {
     }
 
     let activeColor;
-    if (type === 'dem') {
+    if (party === 'dem') {
         activeColor = '#657fad';
-    } else if (type === 'rep') {
+    } else if (party === 'rep') {
         activeColor = '#ff6961';
-        
+    } else {
+        activeColor = '#fae29c'
     }
 
-    const shouldCut = content.length > MAX_LEN;
-    const displayedContent = shouldCut ? content.substring(0, MAX_LEN) + '...' : content;
+    const shouldCut = summary.length > MAX_LEN;
+    const displayedContent = shouldCut ? summary.substring(0, MAX_LEN) + '...' : summary;
     const postStyle = {
-        '--post-color': `var(--color-${type}, var(--color-default))`, 
+        '--post-color': `var(--color-${party}, var(--color-default))`, 
         '--voted-active-color': activeColor
     };
 
@@ -55,8 +57,9 @@ const Post = ({ content, type, timestamp, initialLikes = 0 }) => {
     return (
         <div className="post" style={postStyle}>
             <div className="post-header"> 
+                <h3 className="post-title">{billTitle}</h3>
                 <span className="post-timestamp">
-                    {new Date(timestamp).toLocaleDateString()}
+                    {new Date(createdAt).toLocaleDateString()}
                 </span>
                 
             </div>
@@ -70,7 +73,7 @@ const Post = ({ content, type, timestamp, initialLikes = 0 }) => {
                         ↑
                     </button>
                     <span className={`likes ${likesClass}`}>
-                        {likes}
+                        {likeCount}
                     </span>
                     <button onClick={handleDislike} className={dislikeButtonClass}>
                         ↓
