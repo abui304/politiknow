@@ -1,16 +1,16 @@
 import uuid
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, or_, select
 
 from app.config import settings
 from app.deps import DB, CurrentUser, RedisDep
 from app.models import Bill, InteractionType, SummaryReport, Vote
 from app.ratelimit import enforce_hourly_limit
-from app.schemas import BillOut, BillPage, BillText, SummaryReportIn, TagOut, VoteIn, VoteOut
+from app.schemas import BillOut, BillPage, BillText, HashtagOut, SummaryReportIn, TagOut, VoteIn, VoteOut
 from app.serializers import bills_out
 from app.services import feed as feed_service
-from app.services import interactions
+from app.services import hashtags, interactions
 from app.taxonomy import POLICY_AREAS
 
 router = APIRouter(tags=["bills"])
@@ -28,6 +28,18 @@ async def list_tags(_: CurrentUser):
     return [TagOut(name=name) for name in POLICY_AREAS]
 
 
+@router.get("/hashtags", response_model=list[HashtagOut])
+async def popular_hashtags(db: DB, _: CurrentUser, limit: int = Query(30, le=100)):
+    """Hashtags used on at least two bills, most common first."""
+    return [HashtagOut(name=name, bill_count=n) for name, n in await hashtags.popular(db, limit)]
+
+
+def _has_hashtag(condition):
+    """True when any of the bill's hashtags satisfies `condition(hashtag_column)`."""
+    tags = func.jsonb_array_elements_text(Bill.sub_tags).table_valued("value")
+    return exists(select(1).select_from(tags).where(condition(tags.c.value)))
+
+
 @router.get("/feed", response_model=BillPage)
 async def get_feed(db: DB, redis: RedisDep, user: CurrentUser, cursor: int = 0, limit: int = Query(20, le=50)):
     bills, next_cursor = await feed_service.page(db, redis, user, cursor, limit)
@@ -40,19 +52,27 @@ async def search(
     user: CurrentUser,
     q: str | None = Query(None, max_length=200),
     tag: str | None = None,
+    hashtag: str | None = Query(None, max_length=60),
     cursor: int = 0,
     limit: int = Query(20, le=50),
 ):
-    """Phase 1 basic search: filter by primary tag and/or match words in the title."""
+    """Filter by topic and/or hashtag (exact, case-insensitive), and/or match words in the
+    title or any hashtag."""
     stmt = select(Bill).where(Bill.is_published.is_(True))
     if tag:
         if tag not in POLICY_AREAS:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown tag")
         stmt = stmt.where(Bill.primary_tags.contains([tag]))
-    if q and q.strip():
-        term = q.strip()
+    if hashtag and hashtags.clean(hashtag):
+        wanted = hashtags.clean(hashtag).lower()
+        stmt = stmt.where(_has_hashtag(lambda h: func.lower(h) == wanted))
+    term = (q or "").strip().lstrip("#").strip()
+    if term:
         like = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        stmt = stmt.where(Bill.title.ilike(f"%{like}%", escape="\\")).order_by(
+        pattern = f"%{like}%"
+        stmt = stmt.where(
+            or_(Bill.title.ilike(pattern, escape="\\"), _has_hashtag(lambda h: h.ilike(pattern, escape="\\")))
+        ).order_by(
             func.similarity(Bill.title, term).desc(), Bill.last_action_date.desc().nulls_last()
         )
     else:

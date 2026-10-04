@@ -212,3 +212,8 @@ class NotificationOut(BaseModel):
 
 class TagOut(BaseModel):
     name: str
+
+
+class HashtagOut(BaseModel):
+    name: str
+    bill_count: int

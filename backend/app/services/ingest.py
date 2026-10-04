@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models import Bill, IngestState
-from app.services import llm, notify
+from app.services import hashtags, llm, notify
 from app.services.congress import CongressClient, status_from_action
 
 log = logging.getLogger(__name__)
@@ -43,7 +43,12 @@ async def _set_state(db: AsyncSession, key: str, value: str) -> None:
 
 
 async def ingest_bill(
-    db: AsyncSession, api: CongressClient, congress: int, bill_type: str, number: int
+    db: AsyncSession,
+    api: CongressClient,
+    congress: int,
+    bill_type: str,
+    number: int,
+    vocab: dict[str, str] | None = None,
 ) -> tuple[str, list[dict]]:
     """Ingests or refreshes one bill. Returns (outcome, push messages to send after commit).
 
@@ -90,8 +95,10 @@ async def ingest_bill(
             bill.full_text = text
             bill.summary_simple, bill.summary_detailed = await llm.summarize(bill.title, text)  # Step 4
             policy_area = (detail.get("policyArea") or {}).get("name")
-            tags = await llm.generate_tags(bill.title, text, policy_area)  # Step 5
-            bill.primary_tags, bill.sub_tags = tags.primary, tags.sub
+            if vocab is None:
+                vocab = await hashtags.vocabulary(db)
+            tags = await llm.generate_tags(bill.title, text, policy_area, list(vocab.values()))  # Step 5
+            bill.primary_tags, bill.sub_tags = tags.primary, hashtags.canonicalize(tags.sub, vocab)
             bill.version_hash = version_hash
             first_publish = not bill.is_published
             bill.is_published = True
@@ -137,11 +144,12 @@ async def run_ingestion(db: AsyncSession, api: CongressClient | None = None) -> 
     seen = set(targets)
     targets += [tuple(row) for row in pending if tuple(row) not in seen]
 
+    vocab = await hashtags.vocabulary(db)  # shared across the run so bills in it reuse each other's hashtags
     counts = {"new": 0, "updated": 0, "refreshed": 0, "waiting": 0, "failed": 0}
     pushes: list[dict] = []
     for congress, bill_type, number in targets:
         try:
-            outcome, bill_pushes = await ingest_bill(db, api, int(congress), bill_type, int(number))
+            outcome, bill_pushes = await ingest_bill(db, api, int(congress), bill_type, int(number), vocab)
             await db.commit()
             counts[outcome] += 1
             pushes += bill_pushes

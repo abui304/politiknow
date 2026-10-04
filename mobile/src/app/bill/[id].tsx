@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -78,7 +78,7 @@ export default function BillDetail() {
           <Chip key={t} label={t} selected color={p.soft} />
         ))}
         {bill.sub_tags.map((t) => (
-          <Chip key={t} label={`#${t}`} />
+          <Chip key={t} label={`#${t}`} onPress={() => router.push({ pathname: '/search', params: { hashtag: t } })} />
         ))}
       </View>
 

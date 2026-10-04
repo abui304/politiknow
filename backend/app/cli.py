@@ -2,6 +2,8 @@
   python -m app.cli ingest      # run the Congress.gov ingestion once
   python -m app.cli trending    # recalculate trending once
   python -m app.cli seed-demo   # add sample bills + users for local UI work (no API keys needed)
+  python -m app.cli normalize-hashtags  # merge spelling variants, drop generic hashtags (free)
+  python -m app.cli retag       # regenerate every bill's hashtags so they reuse each other (OpenAI cost)
 """
 
 import asyncio
@@ -86,6 +88,24 @@ async def seed_demo(db) -> None:
     print("Demo data ready.")
 
 
+async def retag(db) -> None:
+    """Regenerate hashtags for every published bill, oldest first, each run reusing the hashtags
+    of the bills before it. Primary topics are left alone. One OpenAI call per bill."""
+    from app.services import hashtags
+
+    bills = list(await db.scalars(
+        select(Bill).where(Bill.is_published.is_(True), Bill.full_text.is_not(None)).order_by(Bill.ingested_at)
+    ))
+    vocab: dict[str, str] = {}
+    for i, b in enumerate(bills, 1):
+        tags = await llm.generate_tags(b.title, b.full_text, None, list(vocab.values()))
+        b.sub_tags = hashtags.canonicalize(tags.sub, vocab)
+        await db.commit()
+        print(f"  [{i}/{len(bills)}] {b.label}: {', '.join(b.sub_tags)}")
+    shared = await hashtags.popular(db, limit=1000)
+    print(f"Done. {len(shared)} hashtags are now shared by 2+ bills.")
+
+
 async def main(cmd: str) -> None:
     sessions = worker_sessionmaker()
     async with sessions() as db:
@@ -97,6 +117,11 @@ async def main(cmd: str) -> None:
             print(await recalculate(db))
         elif cmd == "seed-demo":
             await seed_demo(db)
+        elif cmd == "normalize-hashtags":
+            from app.services import hashtags
+            print(f"Cleaned hashtags on {await hashtags.normalize_all(db)} bills.")
+        elif cmd == "retag":
+            await retag(db)
         else:
             print(__doc__)
 

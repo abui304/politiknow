@@ -37,6 +37,12 @@ TAG_PROMPT = (
     "Return only valid JSON, no other text."
 )
 
+HASHTAG_GUIDANCE = (
+    " For sub_tags, avoid words true of almost every bill (e.g. 'Congress', 'House of Representatives',"
+    " 'resolution', 'United States Code'). When one of these existing keywords fits the bill, reuse it"
+    " exactly as written so bills can be found together: [{known}]"
+)
+
 NEUTRALITY = " Stay strictly neutral: do not take a side or describe the bill as good or bad."
 
 
@@ -81,20 +87,27 @@ class Tags:
     sub: list[str]
 
 
-async def generate_tags(title: str, text: str, official_policy_area: str | None) -> Tags:
-    """Official policyArea is ground truth; the LLM adds extra primary tags and sub-tags."""
+async def generate_tags(
+    title: str, text: str, official_policy_area: str | None, known_hashtags: list[str] = ()
+) -> Tags:
+    """Official policyArea is ground truth; the LLM adds extra primary tags and sub-tags.
+
+    `known_hashtags` (most common first) are offered for reuse so hashtags repeat across bills.
+    """
     official = [official_policy_area] if official_policy_area in POLICY_AREAS else []
     if not _client():
         return Tags(primary=official, sub=[])
     try:
-        raw = await _chat(TAG_PROMPT.format(tags=", ".join(POLICY_AREAS)), _bill_input(title, text), json_mode=True)
+        system = TAG_PROMPT.format(tags=", ".join(POLICY_AREAS))
+        system += HASHTAG_GUIDANCE.format(known=", ".join(known_hashtags[:200]))
+        raw = await _chat(system, _bill_input(title, text), json_mode=True)
         data = json.loads(raw)
     except Exception as e:  # tagging failure shouldn't block ingestion
         log.warning("Tag generation failed for %r: %s", title, e)
         return Tags(primary=official, sub=[])
     llm_primary = [t for t in data.get("primary_tags", []) if t in POLICY_AREAS]
     primary = list(dict.fromkeys(official + llm_primary))[:3]
-    sub = [str(s).strip() for s in data.get("sub_tags", []) if str(s).strip()][:5]
+    sub = [str(s) for s in data.get("sub_tags", [])]
     return Tags(primary=primary, sub=sub)
 
 

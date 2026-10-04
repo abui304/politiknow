@@ -14,6 +14,7 @@ import type {
   BillPage,
   Comment,
   CommentWithBill,
+  Hashtag,
   Me,
   NotificationPrefs,
   Profile,
@@ -24,7 +25,8 @@ export const keys = {
   me: ['me'] as const,
   tags: ['tags'] as const,
   feed: ['feed'] as const,
-  search: (q: string, tag: string | null) => ['search', q, tag] as const,
+  search: (q: string, tag: string | null, hashtag: string | null) => ['search', q, tag, hashtag] as const,
+  hashtags: ['hashtags'] as const,
   bill: (id: string) => ['bill', id] as const,
   billText: (id: string) => ['bill', id, 'text'] as const,
   comments: (billId: string) => ['comments', billId] as const,
@@ -48,19 +50,23 @@ export const useFeed = () =>
     getNextPageParam: (last) => last.next_cursor ?? undefined,
   });
 
-export const useSearch = (q: string, tag: string | null) =>
+export const useSearch = (q: string, tag: string | null, hashtag: string | null) =>
   useInfiniteQuery({
-    queryKey: keys.search(q, tag),
+    queryKey: keys.search(q, tag, hashtag),
     queryFn: ({ pageParam }) => {
       const params = new URLSearchParams({ cursor: String(pageParam), limit: '20' });
       if (q) params.set('q', q);
       if (tag) params.set('tag', tag);
+      if (hashtag) params.set('hashtag', hashtag);
       return api<BillPage>(`/search?${params}`);
     },
     initialPageParam: 0,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
-    enabled: Boolean(q || tag),
+    enabled: Boolean(q || tag || hashtag),
   });
+
+export const usePopularHashtags = () =>
+  useQuery({ queryKey: keys.hashtags, queryFn: () => api<Hashtag[]>('/hashtags?limit=24'), staleTime: 5 * 60_000 });
 
 export const useBill = (id: string) =>
   useQuery({ queryKey: keys.bill(id), queryFn: () => api<Bill>(`/bills/${id}`) });

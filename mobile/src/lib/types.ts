@@ -94,3 +94,5 @@ export type AppNotification = {
 };
 
 export type Tag = { name: string };
+
+export type Hashtag = { name: string; bill_count: number };
