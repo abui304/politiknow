@@ -39,17 +39,31 @@ class CongressClient:
                 log.warning("Congress API %s failed (%s), retrying in %ss", url, status or e, wait)
                 await asyncio.sleep(wait)
 
-    async def list_updated_bills(self, from_iso: str, limit: int) -> list[dict]:
-        """Bills in the current Congress updated since `from_iso`, newest first."""
+    async def list_updated_bills(self, from_iso: str, to_iso: str, offset: int, limit: int) -> tuple[list[dict], int]:
+        """One page of current-Congress bills updated in [from_iso, to_iso], oldest first.
+
+        Returns (bills, total in window). The window is fixed so offsets stay stable across runs.
+        """
         bills: list[dict] = []
-        url = f"{BASE}/bill/{settings.congress_number}"
-        params = {"fromDateTime": from_iso, "sort": "updateDate+desc", "limit": min(limit, 250)}
-        while url and len(bills) < limit:
-            data = await self._get(url, params)
-            bills.extend(data.get("bills", []))
-            url = data.get("pagination", {}).get("next")
-            params = {}  # `next` already carries the query
-        return bills[:limit]
+        total = 0
+        while len(bills) < limit:
+            data = await self._get(
+                f"{BASE}/bill/{settings.congress_number}",
+                {
+                    "fromDateTime": from_iso,
+                    "toDateTime": to_iso,
+                    # A literal space: httpx sends "+" as %2B, which the API silently ignores.
+                    "sort": "updateDate asc",
+                    "offset": offset + len(bills),
+                    "limit": min(limit - len(bills), 250),
+                },
+            )
+            page = data.get("bills", [])
+            total = data.get("pagination", {}).get("count", 0)
+            bills.extend(page)
+            if not page or offset + len(bills) >= total:
+                break
+        return bills, total
 
     async def bill_detail(self, congress: int, bill_type: str, number: int) -> dict:
         data = await self._get(f"{BASE}/bill/{congress}/{bill_type.lower()}/{number}")

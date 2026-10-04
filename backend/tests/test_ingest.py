@@ -2,6 +2,7 @@
 
 from sqlalchemy import select
 
+from app.config import settings
 from app.models import Bill, Notification
 from app.services.congress import status_from_action
 from app.services.ingest import run_ingestion
@@ -13,8 +14,9 @@ class FakeCongress:
         self.text: dict[int, str | None] = {1: "Section 1. Insulin costs capped.", 2: None}
         self.action = "Referred to the Committee on Energy and Commerce."
 
-    async def list_updated_bills(self, since, limit):
-        return [{"congress": 119, "type": "HR", "number": "1"}, {"congress": 119, "type": "S", "number": "2"}]
+    async def list_updated_bills(self, from_iso, to_iso, offset, limit):
+        bills = [{"congress": 119, "type": "HR", "number": "1"}, {"congress": 119, "type": "S", "number": "2"}]
+        return bills[offset : offset + limit], len(bills)
 
     async def bill_detail(self, congress, bill_type, number):
         return {
@@ -34,7 +36,8 @@ async def test_ingestion_pipeline(client, db):
     await signup(client, "healthfan")  # follows Health via onboarding tags
     api = FakeCongress()
 
-    assert await run_ingestion(db, api) == {"ok": 2, "failed": 0}
+    result = await run_ingestion(db, api)
+    assert (result["new"], result["waiting"], result["failed"], result["backlog_remaining"]) == (1, 1, 0, 0)
     bills = {b.bill_number: b for b in await db.scalars(select(Bill))}
     assert bills[1].is_published and bills[1].status == "in_committee"
     assert bills[1].primary_tags == ["Health"] and bills[1].sponsor_party == "D"
@@ -58,3 +61,41 @@ def test_status_from_action():
     assert status_from_action("Passed Senate without amendment by Unanimous Consent.") == "passed_senate"
     assert status_from_action("Referred to the House Committee on Ways and Means.") == "in_committee"
     assert status_from_action(None) == "introduced"
+
+
+class BigBacklogCongress(FakeCongress):
+    """7 updated bills in the window; every one has text."""
+
+    def __init__(self):
+        super().__init__()
+        self.text = {n: f"Text of bill {n}" for n in range(1, 8)}
+        self.listed_calls = []
+
+    async def list_updated_bills(self, from_iso, to_iso, offset, limit):
+        self.listed_calls.append((from_iso, to_iso, offset))
+        bills = [{"congress": 119, "type": "HR", "number": str(n)} for n in range(1, 8)]
+        return bills[offset : offset + limit], len(bills)
+
+
+async def test_capped_runs_resume_without_skipping_or_repeating(db, monkeypatch):
+    """Regression: a capped run used to mark the whole window done and skip the rest."""
+    from app.services import ingest
+
+    monkeypatch.setattr(settings, "ingest_max_bills_per_run", 3)
+    monkeypatch.setattr(ingest, "RESUME_OVERLAP", 1)
+    api = BigBacklogCongress()
+
+    runs = [await run_ingestion(db, api) for _ in range(3)]
+    assert [r["new"] for r in runs] == [3, 3, 1]
+    assert [r["backlog_remaining"] for r in runs] == [4, 1, 0]
+    assert len(set(await db.scalars(select(Bill.bill_number)))) == 7
+
+    # All three runs walked the same fixed window, each re-reading 1 bill before its saved position.
+    assert [c[2] for c in api.listed_calls] == [0, 2, 5]
+    assert [r["refreshed"] for r in runs] == [0, 1, 1]  # the overlap re-reads, never re-summarized
+    assert len({c[:2] for c in api.listed_calls}) == 1
+
+    # The next run opens a new window starting where the last one ended.
+    await run_ingestion(db, api)
+    assert api.listed_calls[-1][0] == api.listed_calls[0][1]
+    assert api.listed_calls[-1][2] == 0
