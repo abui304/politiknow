@@ -1,0 +1,41 @@
+"""Library of Congress Policy Area terms — the controlled primary-tag list (spec 2.3)."""
+
+POLICY_AREAS: list[str] = [
+    "Agriculture and Food",
+    "Animals",
+    "Armed Forces and National Security",
+    "Arts, Culture, Religion",
+    "Civil Rights and Liberties, Minority Issues",
+    "Commerce",
+    "Congress",
+    "Crime and Law Enforcement",
+    "Economics and Public Finance",
+    "Education",
+    "Emergency Management",
+    "Energy",
+    "Environmental Protection",
+    "Families",
+    "Finance and Financial Sector",
+    "Foreign Trade and International Finance",
+    "Geographic Areas, Entities, and Committees",
+    "Government Operations and Politics",
+    "Health",
+    "Housing and Community Development",
+    "Immigration",
+    "International Affairs",
+    "Labor and Employment",
+    "Law",
+    "Native Americans",
+    "Private Legislation",
+    "Public Lands and Natural Resources",
+    "Science, Technology, Communications",
+    "Social Sciences and History",
+    "Social Welfare",
+    "Sports and Recreation",
+    "Taxation",
+    "Transportation and Public Works",
+    "Water Resources Development",
+]
+
+def is_valid_tag(tag: str) -> bool:
+    return tag in POLICY_AREAS
