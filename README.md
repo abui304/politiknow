@@ -54,7 +54,11 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
 - New bills reuse existing hashtags where they fit (spelling variants merged, generic words like "Congress" dropped), so hashtags actually connect bills.
 
 ### Legislators
-- Every sponsor and cosponsor has a page with their party, state and district, how many bills they've sponsored and cosponsored, and their bills, switchable between **All**, **Sponsored**, and **Cosponsored**.
+- Every sponsor and cosponsor has a page with their **official photo**, party, state and district, how many bills they've sponsored and cosponsored, and their bills, switchable between **All**, **Sponsored**, and **Cosponsored**.
+- An illustrated **map** of the area they represent: the district filled in their party color inside its state, neighboring districts outlined, and major cities labeled. Small city districts zoom in, with a little state map showing where they are. Senators' maps fill the whole state.
+- **In office** (years served in the House and Senate) and their **Washington office** address and phone (tap to call).
+- Photos also appear in search suggestions and cosponsor lists.
+- Maps are drawn by the app from public-domain Census Bureau boundaries (119th Congress districts) and Natural Earth city data, so they need no map service or key.
 
 ### Alerts (notifications)
 - An in-app **Alerts** tab with an unread badge, for four kinds of alerts:
@@ -94,6 +98,8 @@ A background job runs **4 times a day** (06:00, 12:00, 18:00, 23:00 UTC). It can
 2. Fetches each bill's details (sponsor, party, status, policy area), its **cosponsors** (only when their count has changed), and its **latest full text**.
 3. If the text is new or changed, makes three GPT-4o-mini calls: simple summary, detailed summary, and topics + hashtags. Unchanged text is **never re-summarized**.
 4. Publishes the bill and sends alerts to people who follow its topics (and status-change alerts to people who engaged with it).
+
+5. Fetches photos, years in office, and office details for any new sponsors and cosponsors, and refreshes existing legislators monthly (up to `INGEST_MAX_MEMBERS_PER_RUN` per run, free Congress.gov calls).
 
 Bills without published text yet stay hidden and are retried on later runs.
 
@@ -156,6 +162,8 @@ Run from `backend/`:
 | `.venv/bin/python -m app.cli normalize-hashtags` | Merge hashtag spelling variants, drop generic ones | Free |
 | `.venv/bin/python -m app.cli retag` | Regenerate every bill's hashtags so they reuse each other | OpenAI, one call per bill |
 | `.venv/bin/python -m app.cli backfill-cosponsors` | Fetch sponsor and cosponsor details for bills ingested before they were tracked | Free (Congress.gov only) |
+| `.venv/bin/python -m app.cli sync-members` | Refresh every legislator's photo, years in office, and office details (ingestion also does up to 100 per run, monthly per member) | Free (Congress.gov only) |
+| `.venv/bin/python -m app.cli build-maps` | Rebuild the state and district maps in `backend/app/data/maps/` (needs `requirements-dev.txt`) | Free |
 | `.venv/bin/python -m app.cli seed-demo` | Add 6 sample (older) bills and demo users, for UI work without API keys | Free without an OpenAI key |
 
 Demo logins after `seed-demo`: `civic_owl@example.com` / `politiknow123` (also `ballot_bunny`, `policy_panda`).
@@ -176,6 +184,7 @@ Backend keys go in `backend/.env`; app settings (API URL override, Google client
 | Setting | Default | Meaning |
 |---|---|---|
 | `INGEST_MAX_BILLS_PER_RUN` | 50 | Bills per ingestion run (caps OpenAI spend) |
+| `INGEST_MAX_MEMBERS_PER_RUN` | 100 | Legislator photo/office refreshes per ingestion run (free) |
 | `INGEST_LOOKBACK_DAYS` | 7 | How far back the very first run looks |
 | `CONGRESS_NUMBER` | 119 | Which Congress to ingest |
 | `FEED_RECENCY_HALF_LIFE_DAYS` | 30 | How fast older bills sink in the feed |
@@ -215,7 +224,8 @@ backend/app/
   models.py         database tables
   routers/          API endpoints (auth, users, bills, legislators, comments, notifications)
   services/         ingestion, Congress.gov client, AI, feed ranking, trending,
-                    hashtags, legislators, moderation, notifications
+                    hashtags, legislators, district maps, moderation, notifications
+  data/maps/        pre-drawn state and district maps (one JSON file per state)
   worker.py         background job schedule
   cli.py            manual commands
 backend/alembic/    database migrations
@@ -223,13 +233,14 @@ backend/tests/      test suite
 
 mobile/src/
   app/              screens (Expo Router: each file is a route)
-  components/       bill card, legislator row, comments, profile, UI kit
+  components/       bill card, legislator row/photo, district map, comments, profile, UI kit
   lib/              API client, auth, data hooks, push, formatting
   theme.ts          colors, fonts, sticker style
 ```
 
 ## Notes
 
-- **Existing databases:** after `alembic upgrade head`, run `backfill-cosponsors` once so bills ingested earlier get their sponsors and cosponsors linked. New ingestion keeps them current.
+- **Existing databases:** after `alembic upgrade head`, run `backfill-cosponsors` and then `sync-members` once, so bills ingested earlier get their sponsors and cosponsors linked and every legislator gets a photo and office details. New ingestion keeps them current.
+- **District maps** reflect boundaries at the start of the 119th Congress. If states redraw districts, rerun `build-maps` once the Census Bureau publishes new files (update the file names in `services/district_maps.py`).
 - **Schema changes:** edit `backend/app/models.py`, then run `alembic revision --autogenerate -m "..."` and `alembic upgrade head`.
 - **Design:** the UI uses line icons only, no emoji. Bill cards keep the full party colors.

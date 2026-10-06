@@ -171,9 +171,21 @@ class LegislatorBase(BaseModel):
     state: str | None
     district: int | None
     chamber: str | None
+    image_url: str | None
+
+
+class CareerSpan(BaseModel):
+    chamber: Literal["house", "senate"]
+    start: int | None
+    end: int | None  # None = still serving
 
 
 class LegislatorOut(LegislatorBase):
+    state_name: str | None
+    image_credit: str | None
+    career: list[CareerSpan]
+    office_address: str | None
+    phone: str | None
     sponsored_count: int  # published bills only
     cosponsored_count: int
 

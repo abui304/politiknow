@@ -5,6 +5,8 @@
   python -m app.cli normalize-hashtags  # merge spelling variants, drop generic hashtags (free)
   python -m app.cli retag       # regenerate every bill's hashtags so they reuse each other (OpenAI cost)
   python -m app.cli backfill-cosponsors  # fetch sponsor + cosponsor details for existing bills (free)
+  python -m app.cli sync-members  # refresh every legislator's photo, career, and office (free)
+  python -m app.cli build-maps    # rebuild app/data/maps from Census boundaries (free; dev requirements)
 """
 
 import asyncio
@@ -135,6 +137,10 @@ async def backfill_cosponsors(db) -> None:
 
 
 async def main(cmd: str) -> None:
+    if cmd == "build-maps":
+        from app.services import district_maps
+        print(f"Wrote {district_maps.build()} state maps to {district_maps.MAPS_DIR}")
+        return
     sessions = worker_sessionmaker()
     async with sessions() as db:
         if cmd == "ingest":
@@ -152,6 +158,15 @@ async def main(cmd: str) -> None:
             await retag(db)
         elif cmd == "backfill-cosponsors":
             await backfill_cosponsors(db)
+        elif cmd == "sync-members":
+            from app.services import legislators
+            from app.services.congress import CongressClient
+
+            api = CongressClient()
+            try:
+                print(f"Updated {await legislators.sync_members(db, api)} legislators.")
+            finally:
+                await api.close()
         else:
             print(__doc__)
 

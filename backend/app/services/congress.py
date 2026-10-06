@@ -69,6 +69,10 @@ class CongressClient:
         data = await self._get(f"{BASE}/bill/{congress}/{bill_type.lower()}/{number}")
         return data["bill"]
 
+    async def member(self, bioguide_id: str) -> dict:
+        data = await self._get(f"{BASE}/member/{bioguide_id}")
+        return data["member"]
+
     async def cosponsors(self, congress: int, bill_type: str, number: int) -> list[dict]:
         """Every cosponsor of a bill, including withdrawn ones (they carry sponsorshipWithdrawnDate)."""
         members: list[dict] = []

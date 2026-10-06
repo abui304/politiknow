@@ -77,9 +77,31 @@ type LegislatorBase = {
   state: string | null;
   district: number | null;
   chamber: Chamber | null;
+  image_url: string | null;
 };
 
-export type Legislator = LegislatorBase & { sponsored_count: number; cosponsored_count: number };
+export type CareerSpan = { chamber: Chamber; start: number | null; end: number | null };
+
+export type Legislator = LegislatorBase & {
+  state_name: string | null;
+  image_credit: string | null;
+  career: CareerSpan[];
+  office_address: string | null;
+  phone: string | null;
+  sponsored_count: number;
+  cosponsored_count: number;
+};
+
+/** A pre-drawn state map from /maps/{state}: SVG paths in a width x height box, y pointing down. */
+export type StateMap = {
+  state: string;
+  name: string;
+  width: number;
+  height: number;
+  outline: string;
+  districts: Record<string, { path: string; bbox: [number, number, number, number] }>;
+  cities: { name: string; x: number; y: number; pop: number; district: string | null }[];
+};
 
 export type Cosponsor = LegislatorBase & { is_original: boolean; sponsorship_date: string | null };
 

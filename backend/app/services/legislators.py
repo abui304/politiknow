@@ -1,14 +1,19 @@
 """Sponsors and cosponsors (spec 3.3 step 6). Members are stored once in `legislators` and linked to
 bills, so people can browse everything a member sponsored or cosponsored."""
 
-from datetime import date
+import logging
+import re
+from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import delete, func, or_
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Bill, BillCosponsor, Legislator
 from app.services.congress import CongressClient
+
+log = logging.getLogger(__name__)
+MEMBER_REFRESH_DAYS = 30
 
 # Search filter values -> stored party codes. "ID" is an Independent who caucuses with Democrats.
 PARTY_CODES = {"D": ["D"], "R": ["R"], "I": ["I", "ID"]}
@@ -79,3 +84,67 @@ async def sync_bill(db: AsyncSession, api: CongressClient, bill: Bill, detail: d
             sponsorship_date=date.fromisoformat(m["sponsorshipDate"]) if m.get("sponsorshipDate") else None,
         ))
     bill.cosponsor_count = count
+
+
+def career(terms: list[dict], current: bool) -> list[dict]:
+    """Collapses per-Congress terms into continuous spans per chamber, oldest first.
+    A current member's last span has end=None ("to now")."""
+    spans: list[dict] = []
+    for t in sorted(terms, key=lambda t: t.get("startYear") or 0):
+        chamber = "senate" if t.get("chamber") == "Senate" else "house"
+        start, end = t.get("startYear"), t.get("endYear")
+        last = spans[-1] if spans else None
+        # Back-to-back terms in the same chamber (one ends the year the next starts) form one span.
+        if last and last["chamber"] == chamber and last["end"] and start and start <= last["end"]:
+            last["end"] = end
+        else:
+            spans.append({"chamber": chamber, "start": start, "end": end})
+    if current and spans:
+        spans[-1]["end"] = None
+    return spans
+
+
+def office_address(info: dict) -> str | None:
+    address = re.sub(r"\s+", " ", info.get("officeAddress") or "").strip()
+    if not address:
+        return None
+    if "Washington" not in address:  # House addresses leave off the city
+        # Congress.gov sometimes gives the Senate ZIP for House offices; every House building is 20515.
+        zip_code = "20515" if "House Office Building" in address else info.get("zipCode") or ""
+        address += f", Washington, DC {zip_code}".rstrip()
+    return address
+
+
+def apply_member(legislator: Legislator, member: dict) -> None:
+    depiction = member.get("depiction") or {}
+    info = member.get("addressInformation") or {}
+    legislator.state_name = member.get("state")
+    legislator.image_url = depiction.get("imageUrl")
+    # Attribution comes as HTML, e.g. '<a href="...">Courtesy U.S. Senate Historical Office</a>'.
+    legislator.image_credit = re.sub(r"<[^>]+>", "", depiction.get("attribution") or "").strip()[:255] or None
+    legislator.career = career(member.get("terms") or [], bool(member.get("currentMember")))
+    legislator.office_address = office_address(info)
+    legislator.phone = info.get("phoneNumber")
+    legislator.member_synced_at = datetime.now(UTC)
+
+
+async def sync_members(db: AsyncSession, api: CongressClient, limit: int | None = None) -> int:
+    """Refreshes photos, careers, and offices for members never synced or synced over 30 days ago,
+    never-synced first. One free Congress.gov call each. Returns how many were updated."""
+    stale = datetime.now(UTC) - timedelta(days=MEMBER_REFRESH_DAYS)
+    due = list(await db.scalars(
+        select(Legislator.bioguide_id)
+        .where(or_(Legislator.member_synced_at.is_(None), Legislator.member_synced_at < stale))
+        .order_by(Legislator.member_synced_at.nulls_first())
+        .limit(limit)
+    ))
+    done = 0
+    for bioguide_id in due:
+        try:
+            apply_member(await db.get(Legislator, bioguide_id), await api.member(bioguide_id))
+            await db.commit()
+            done += 1
+        except Exception:
+            await db.rollback()
+            log.exception("Failed to sync member %s", bioguide_id)
+    return done

@@ -1,7 +1,7 @@
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
 
 from app.deps import DB, CurrentUser
@@ -9,6 +9,7 @@ from app.models import Bill, BillCosponsor, Legislator
 from app.routers.bills import _published_bill
 from app.schemas import BillPage, CosponsorOut, LegislatorBase, LegislatorOut
 from app.serializers import bills_out
+from app.services import district_maps
 from app.services.legislators import PARTY_CODES, like_pattern, name_matches
 
 router = APIRouter(tags=["legislators"])
@@ -38,8 +39,10 @@ def _with_counts():
 
 def _out(row) -> LegislatorOut:
     legislator, s_n, c_n = row
-    base = LegislatorBase.model_validate(legislator).model_dump()
-    return LegislatorOut(**base, sponsored_count=s_n, cosponsored_count=c_n)
+    return LegislatorOut.model_validate(
+        {**{f: getattr(legislator, f) for f in LegislatorOut.model_fields if hasattr(legislator, f)},
+         "sponsored_count": s_n, "cosponsored_count": c_n}
+    )
 
 
 @router.get("/legislators", response_model=list[LegislatorOut])
@@ -92,6 +95,16 @@ async def legislator_bills(
     bills = list(await db.scalars(stmt.offset(cursor).limit(limit + 1)))
     next_cursor = cursor + limit if len(bills) > limit else None
     return BillPage(items=await bills_out(db, user, bills[:limit]), next_cursor=next_cursor)
+
+
+@router.get("/maps/{state}")
+async def state_map(state: str, response: Response):
+    """Pre-drawn state + district map (see services/district_maps). Public data, cached a day."""
+    data = district_maps.load(state)
+    if not data:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No map for that state")
+    response.headers["Cache-Control"] = "public, max-age=86400"
+    return data
 
 
 @router.get("/bills/{bill_id}/cosponsors", response_model=list[CosponsorOut])

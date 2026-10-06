@@ -1,12 +1,14 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Linking, StyleSheet, Text, View } from 'react-native';
 
 import { BillCard, PartyBadge } from '@/components/BillCard';
-import { BouncyPressable, Empty, Icon, Loading, Screen, TopBar, Txt } from '@/components/ui';
-import { legislatorPlace } from '@/lib/format';
-import { useLegislator, useLegislatorBills } from '@/lib/queries';
-import type { LegislatorRole } from '@/lib/types';
+import { DistrictMap } from '@/components/DistrictMap';
+import { LegislatorPhoto } from '@/components/LegislatorPhoto';
+import { BouncyPressable, Card, Empty, Icon, type IconName, Loading, Screen, TopBar, Txt } from '@/components/ui';
+import { legislatorPlace, ordinal } from '@/lib/format';
+import { useLegislator, useLegislatorBills, useStateMap } from '@/lib/queries';
+import type { Legislator, LegislatorRole, StateMap } from '@/lib/types';
 import { colors, fonts, partyColors, radius, space, sticker, type } from '@/theme';
 
 const ROLES: { key: LegislatorRole; label: string }[] = [
@@ -46,16 +48,24 @@ export default function LegislatorPage() {
             <TopBar title={legislator.name} />
             <View style={[styles.hero, sticker(4), { backgroundColor: p.main }]}>
               <View style={styles.heroTop}>
-                <PartyBadge code={legislator.party} />
-                <Text style={styles.heroParty}>{p.label}</Text>
+                <LegislatorPhoto legislator={legislator} size={92} shape="portrait" />
+                <View style={{ flex: 1, gap: space.xs }}>
+                  <View style={styles.heroParty}>
+                    <PartyBadge code={legislator.party} />
+                    <Text style={styles.heroPartyText}>{p.label}</Text>
+                  </View>
+                  <Text style={styles.heroName}>{legislator.name}</Text>
+                  <Text style={styles.heroMeta}>{legislatorPlace(legislator)}</Text>
+                </View>
               </View>
-              <Text style={styles.heroName}>{legislator.name}</Text>
-              <Text style={styles.heroMeta}>{legislatorPlace(legislator)}</Text>
               <View style={styles.stats}>
                 <Stat n={legislator.sponsored_count} label="sponsored" />
                 <Stat n={legislator.cosponsored_count} label="cosponsored" />
               </View>
             </View>
+            <AreaCard legislator={legislator} />
+            <OfficeCard legislator={legislator} />
+            <Txt style={[type.h2, { marginTop: space.sm }]}>Bills</Txt>
             <View style={[styles.segment, sticker(2, radius.pill)]}>
               {ROLES.map((r) => (
                 <BouncyPressable
@@ -94,6 +104,101 @@ export default function LegislatorPage() {
   );
 }
 
+/** Map key of the member's district: null for senators (whole state). */
+function districtKey(l: Legislator, map: StateMap): string | null {
+  if (l.chamber === 'senate') return null;
+  const keys = Object.keys(map.districts);
+  if (keys.length === 1) return keys[0]; // at-large seat or delegate
+  const key = String(l.district ?? 0);
+  return key in map.districts ? key : null;
+}
+
+function areaTitle(l: Legislator, stateName: string) {
+  if (l.chamber === 'senate') return { title: stateName, subtitle: 'Represents the whole state' };
+  if (!l.district) return { title: `${stateName} at-large`, subtitle: 'One seat covers the whole state' };
+  return { title: `${stateName}'s ${ordinal(l.district)} District`, subtitle: 'District boundaries for the 119th Congress' };
+}
+
+function AreaCard({ legislator }: { legislator: Legislator }) {
+  const { data: map, isLoading } = useStateMap(legislator.state);
+  if (!legislator.state || (!isLoading && !map)) return null;
+  const { title, subtitle } = areaTitle(legislator, legislator.state_name ?? map?.name ?? legislator.state);
+  return (
+    <Card style={{ gap: space.md }}>
+      <View style={styles.cardHead}>
+        <Icon name="map" size={18} />
+        <View style={{ flex: 1 }}>
+          <Txt style={type.h3}>{title}</Txt>
+          <Txt style={type.small}>{subtitle}</Txt>
+        </View>
+      </View>
+      {map ? (
+        <DistrictMap map={map} district={districtKey(legislator, map)} party={legislator.party} />
+      ) : (
+        <View style={styles.mapPlaceholder}>
+          <ActivityIndicator color={colors.inkSoft} />
+        </View>
+      )}
+    </Card>
+  );
+}
+
+function OfficeCard({ legislator: l }: { legislator: Legislator }) {
+  const thisYear = new Date().getFullYear();
+  const phone = l.phone;
+  if (!l.career.length && !l.office_address && !l.phone) return null;
+  return (
+    <Card style={{ gap: space.md }}>
+      {l.career.length ? (
+        <View style={{ gap: space.sm }}>
+          <Txt style={type.h3}>In office</Txt>
+          {[...l.career].reverse().map((span) => (
+            <InfoRow
+              key={`${span.chamber}-${span.start}`}
+              icon={span.chamber === 'senate' ? 'star' : 'home'}
+              title={span.chamber === 'senate' ? 'U.S. Senate' : 'U.S. House'}
+              detail={
+                span.end === null
+                  ? `Since ${span.start} · ${Math.max(thisYear - (span.start ?? thisYear), 1)} yrs`
+                  : `${span.start}–${span.end}`
+              }
+            />
+          ))}
+        </View>
+      ) : null}
+      {l.office_address || l.phone ? (
+        <View style={{ gap: space.sm }}>
+          <Txt style={type.h3}>Washington office</Txt>
+          {l.office_address ? <InfoRow icon="map-pin" title={l.office_address} /> : null}
+          {phone ? (
+            <BouncyPressable
+              onPress={() => Linking.openURL(`tel:${phone.replace(/[^\d+]/g, '')}`)}
+              accessibilityRole="link"
+              accessibilityLabel={`Call ${phone}`}>
+              <InfoRow icon="phone" title={phone} link />
+            </BouncyPressable>
+          ) : null}
+        </View>
+      ) : null}
+      {l.image_credit ? <Txt style={type.tiny}>Photo: {l.image_credit}</Txt> : null}
+    </Card>
+  );
+}
+
+function InfoRow({ icon, title, detail, link }: { icon: IconName; title: string; detail?: string; link?: boolean }) {
+  return (
+    <View style={styles.infoRow}>
+      <View style={[styles.infoIcon, sticker(2, radius.pill)]}>
+        <Icon name={icon} size={15} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Txt style={[type.bodyBold, link && { color: colors.blue }]}>{title}</Txt>
+        {detail ? <Txt style={type.small}>{detail}</Txt> : null}
+      </View>
+    </View>
+  );
+}
+
 function Stat({ n, label }: { n: number; label: string }) {
   return (
     <View style={{ alignItems: 'center', minWidth: 90 }}>
@@ -106,9 +211,10 @@ function Stat({ n, label }: { n: number; label: string }) {
 const styles = StyleSheet.create({
   list: { paddingHorizontal: space.lg, paddingBottom: space.xxl, width: '100%', maxWidth: 520, alignSelf: 'center' },
   hero: { padding: space.lg, gap: space.xs },
-  heroTop: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  heroParty: { fontFamily: fonts.extrabold, color: '#fff', fontSize: 14 },
-  heroName: { fontFamily: fonts.black, color: '#fff', fontSize: 26, marginTop: space.xs },
+  heroTop: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
+  heroParty: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  heroPartyText: { fontFamily: fonts.extrabold, color: '#fff', fontSize: 14 },
+  heroName: { fontFamily: fonts.black, color: '#fff', fontSize: 24, lineHeight: 28 },
   heroMeta: { fontFamily: fonts.bold, color: 'rgba(255,255,255,0.92)', fontSize: 15 },
   stats: {
     flexDirection: 'row',
@@ -124,5 +230,9 @@ const styles = StyleSheet.create({
   segment: { flexDirection: 'row', backgroundColor: colors.surfaceAlt, padding: 3 },
   segmentBtn: { flex: 1, paddingVertical: 8, borderRadius: radius.pill, alignItems: 'center' },
   segmentText: { fontFamily: fonts.extrabold, fontSize: 14, color: colors.ink },
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  mapPlaceholder: { aspectRatio: 4 / 3, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt, borderRadius: radius.lg },
+  infoRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  infoIcon: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt },
   roleTag: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6, marginLeft: 4 },
 });

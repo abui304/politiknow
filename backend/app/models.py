@@ -142,6 +142,15 @@ class Legislator(Base):
     state: Mapped[str | None] = mapped_column(String(2))
     district: Mapped[int | None] = mapped_column(Integer)
     chamber: Mapped[str | None] = mapped_column(String(10))  # house / senate
+    # From Congress.gov's member record, refreshed by legislators.sync_members.
+    state_name: Mapped[str | None] = mapped_column(String(50))
+    image_url: Mapped[str | None] = mapped_column(Text)
+    image_credit: Mapped[str | None] = mapped_column(String(255))
+    # Continuous spans per chamber: [{chamber, start, end (None = still serving)}]
+    career: Mapped[list[dict]] = mapped_column(JSONB, default=list, server_default="[]")
+    office_address: Mapped[str | None] = mapped_column(Text)
+    phone: Mapped[str | None] = mapped_column(String(30))
+    member_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

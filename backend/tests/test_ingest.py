@@ -27,6 +27,13 @@ class FakeCongress:
             "legislationUrl": "https://congress.gov/x",
         }
 
+    async def member(self, bioguide_id):
+        return {"state": "California", "currentMember": True,
+                "depiction": {"imageUrl": f"https://img/{bioguide_id}.jpg", "attribution": "<a href='x'>Courtesy</a>"},
+                "terms": [{"chamber": "House of Representatives", "startYear": 2025, "endYear": 2027}],
+                "addressInformation": {"officeAddress": "1 Longworth House Office Building", "zipCode": 20515,
+                                       "phoneNumber": "(202) 225-0000"}}
+
     async def latest_text(self, congress, bill_type, number):
         t = self.text[number]
         return ("Introduced", t) if t else None

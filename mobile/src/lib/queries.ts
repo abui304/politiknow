@@ -23,6 +23,7 @@ import type {
   NotificationPrefs,
   PartyFilter,
   Profile,
+  StateMap,
   Tag,
 } from './types';
 
@@ -45,6 +46,7 @@ export const keys = {
   legislators: (q: string, party: PartyFilter | null, chamber: Chamber | null) =>
     ['legislators', q, party, chamber] as const,
   legislator: (id: string) => ['legislator', id] as const,
+  stateMap: (state: string) => ['stateMap', state] as const,
   legislatorBills: (id: string, role: LegislatorRole) => ['legislatorBills', id, role] as const,
   billText: (id: string) => ['bill', id, 'text'] as const,
   comments: (billId: string) => ['comments', billId] as const,
@@ -104,6 +106,15 @@ export const useLegislatorBills = (id: string, role: LegislatorRole) =>
       api<BillPage>(`/legislators/${id}/bills?role=${role}&cursor=${pageParam}&limit=15`),
     initialPageParam: 0,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
+  });
+
+/** Static per-state boundary data; never changes within a session. */
+export const useStateMap = (state: string | null | undefined) =>
+  useQuery({
+    queryKey: keys.stateMap(state ?? ''),
+    queryFn: () => api<StateMap>(`/maps/${state}`),
+    enabled: Boolean(state),
+    staleTime: Infinity,
   });
 
 export const useBillCosponsors = (billId: string) =>

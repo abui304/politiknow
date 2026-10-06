@@ -132,3 +132,61 @@ async def test_search_by_sponsor(client, db):
     # A title match ranks above name matches, even when it's older.
     await make_bill(db, title="Pelosi Tribute Act", days_ago=30)
     assert await titles(q="pelosi") == ["Pelosi Tribute Act", "Insulin Price Cap Act", "Housing Act"]
+
+
+def test_career_spans():
+    from app.services.legislators import career
+
+    terms = [
+        {"chamber": "House of Representatives", "startYear": 2007, "endYear": 2009},
+        {"chamber": "House of Representatives", "startYear": 2009, "endYear": 2011},
+        {"chamber": "Senate", "startYear": 2013, "endYear": 2015},
+        {"chamber": "Senate", "startYear": 2015, "endYear": 2017},
+    ]
+    assert career(terms, current=True) == [
+        {"chamber": "house", "start": 2007, "end": 2011},
+        {"chamber": "senate", "start": 2013, "end": None},
+    ]
+    assert career(terms, current=False)[-1]["end"] == 2017
+
+
+def test_office_address():
+    from app.services.legislators import office_address
+
+    assert office_address({"officeAddress": "1236 Longworth House Office Building", "zipCode": 20515}) == (
+        "1236 Longworth House Office Building, Washington, DC 20515"
+    )
+    assert office_address({"officeAddress": "311 Hart Senate Office Building  Washington, DC 20510"}) == (
+        "311 Hart Senate Office Building Washington, DC 20510"
+    )
+    assert office_address({"officeAddress": "2136 Rayburn House Office Building", "zipCode": 20510}) == (
+        "2136 Rayburn House Office Building, Washington, DC 20515"
+    )
+    assert office_address({}) is None
+
+
+async def test_ingestion_syncs_member_details(client, db):
+    await run_ingestion(db, CosponsorCongress())
+    h = await signup(client)
+    r = await client.get("/legislators/P000197", headers=h)
+    body = r.json()
+    assert body["image_url"] == "https://img/P000197.jpg"
+    assert body["image_credit"] == "Courtesy"  # HTML stripped
+    assert body["state_name"] == "California"
+    assert body["career"] == [{"chamber": "house", "start": 2025, "end": None}]
+    assert body["phone"] == "(202) 225-0000"
+    bill_id = await db.scalar(select(Bill.id).where(Bill.bill_number == 1))
+    r = await client.get(f"/bills/{bill_id}/cosponsors", headers=h)
+    assert all(c["image_url"] for c in r.json())
+
+
+async def test_state_maps(client):
+    r = await client.get("/maps/CA")
+    assert r.status_code == 200
+    ca = r.json()
+    assert ca["name"] == "California" and len(ca["districts"]) == 52
+    assert ca["districts"]["11"]["path"].startswith("M")
+    assert any(c["name"] == "San Francisco" and c["district"] == "11" for c in ca["cities"])
+    assert (await client.get("/maps/WY")).json()["districts"].keys() == {"0"}  # at-large
+    assert (await client.get("/maps/ZZ")).status_code == 404
+    assert (await client.get("/maps/..")).status_code == 404

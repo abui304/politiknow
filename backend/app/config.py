@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     ingest_times_utc: list[int] = [6, 12, 18, 23]  # hours of day, 4x daily
     ingest_lookback_days: int = 7  # first run only
     ingest_max_bills_per_run: int = 50  # caps LLM spend per run
+    ingest_max_members_per_run: int = 100  # legislator photo/office refreshes per run (free API calls)
     max_bill_chars_for_llm: int = 60_000
 
     # Feed & trending (spec 5)

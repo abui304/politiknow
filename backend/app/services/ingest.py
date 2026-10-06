@@ -155,6 +155,9 @@ async def run_ingestion(db: AsyncSession, api: CongressClient | None = None) -> 
             counts["failed"] += 1
             log.exception("Failed to ingest %s %s-%s", congress, bill_type, number)
 
+    # New sponsors/cosponsors get their photo and office details (and older ones a monthly refresh).
+    counts["members_synced"] = await legislators.sync_members(db, api, limit=settings.ingest_max_members_per_run)
+
     # Step 7: save our position. Once the window is exhausted, the next run starts where it ended.
     offset = start + len(listed)
     if offset >= total:

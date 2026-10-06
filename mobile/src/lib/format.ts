@@ -23,6 +23,12 @@ export function legislatorPlace(l: { chamber: string | null; state: string | nul
   return `${role} · ${seat}`;
 }
 
+/** 1 -> "1st", 22 -> "22nd", 13 -> "13th". */
+export function ordinal(n: number) {
+  const suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th';
+  return `${n}${suffix}`;
+}
+
 export function shortDate(iso: string | null | undefined): string {
   if (!iso) return '';
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
