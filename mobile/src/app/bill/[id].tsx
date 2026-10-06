@@ -39,6 +39,7 @@ export default function BillDetail() {
   const p = partyColors(bill.sponsor_party);
   const status = statusOf(bill.status);
   const summary = level === 'simple' ? bill.summary_simple : bill.summary_detailed;
+  const sponsorId = bill.sponsor_id;
   const openCongress = () => bill.congress_url && WebBrowser.openBrowserAsync(bill.congress_url);
 
   return (
@@ -62,7 +63,30 @@ export default function BillDetail() {
         <View style={styles.heroMeta}>
           <Text style={styles.heroMetaText}>{status}</Text>
           {bill.introduced_date ? <Text style={styles.heroMetaText}>Introduced {shortDate(bill.introduced_date)}</Text> : null}
-          {bill.sponsor_name ? <Text style={styles.heroMetaText}>Sponsor: {bill.sponsor_name}</Text> : null}
+          {bill.sponsor_name ? (
+            sponsorId ? (
+              <BouncyPressable
+                onPress={() => router.push({ pathname: '/legislator/[id]', params: { id: sponsorId } })}
+                accessibilityRole="link"
+                style={styles.heroLink}>
+                <Text style={styles.heroMetaText}>Sponsor: </Text>
+                <Text style={styles.heroLinkText}>{bill.sponsor_name}</Text>
+                <Icon name="chevron-right" size={15} color="#fff" />
+              </BouncyPressable>
+            ) : (
+              <Text style={styles.heroMetaText}>Sponsor: {bill.sponsor_name}</Text>
+            )
+          ) : null}
+          {bill.cosponsor_count > 0 ? (
+            <BouncyPressable
+              onPress={() => router.push({ pathname: '/cosponsors/[id]', params: { id: bill.id } })}
+              accessibilityRole="link"
+              style={styles.heroLink}>
+              <Icon name="users" size={15} color="#fff" />
+              <Text style={styles.heroLinkText}>Cosponsors ({bill.cosponsor_count})</Text>
+              <Icon name="chevron-right" size={15} color="#fff" />
+            </BouncyPressable>
+          ) : null}
         </View>
         <View style={styles.heroFooter}>
           <VoteControl bill={bill} />
@@ -176,6 +200,8 @@ const styles = StyleSheet.create({
   heroTitle: { fontFamily: fonts.black, color: '#fff', fontSize: 22, lineHeight: 28 },
   heroMeta: { gap: 4 },
   heroMetaText: { fontFamily: fonts.bold, color: 'rgba(255,255,255,0.92)', fontSize: 14 },
+  heroLink: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', flexWrap: 'wrap' },
+  heroLinkText: { fontFamily: fonts.extrabold, color: '#fff', fontSize: 14, textDecorationLine: 'underline' },
   heroFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 2, borderTopColor: 'rgba(255,255,255,0.35)', paddingTop: space.sm },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: space.lg },
   segment: { flexDirection: 'row', backgroundColor: colors.surfaceAlt, padding: 3 },

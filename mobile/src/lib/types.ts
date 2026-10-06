@@ -50,8 +50,10 @@ export type Bill = {
   summary_detailed: string | null;
   primary_tags: string[];
   sub_tags: string[];
+  sponsor_id: string | null;
   sponsor_name: string | null;
   sponsor_party: string | null;
+  cosponsor_count: number;
   status: string;
   latest_action_text: string | null;
   congress_url: string | null;
@@ -64,6 +66,27 @@ export type Bill = {
 };
 
 export type BillPage = { items: Bill[]; next_cursor: number | null };
+
+export type Chamber = 'house' | 'senate';
+
+type LegislatorBase = {
+  bioguide_id: string;
+  name: string;
+  full_name: string;
+  party: string | null;
+  state: string | null;
+  district: number | null;
+  chamber: Chamber | null;
+};
+
+export type Legislator = LegislatorBase & { sponsored_count: number; cosponsored_count: number };
+
+export type Cosponsor = LegislatorBase & { is_original: boolean; sponsorship_date: string | null };
+
+/** Search filter values; Independent also matches "ID" (Independent Democrat). */
+export type PartyFilter = 'D' | 'R' | 'I';
+
+export type LegislatorRole = 'all' | 'sponsored' | 'cosponsored';
 
 export type Comment = {
   id: string;

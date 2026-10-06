@@ -1,16 +1,18 @@
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import exists, func, or_, select
+from sqlalchemy import case, exists, func, or_, select
 
 from app.config import settings
 from app.deps import DB, CurrentUser, RedisDep
-from app.models import Bill, InteractionType, SummaryReport, Vote
+from app.models import Bill, BillCosponsor, InteractionType, Legislator, SummaryReport, Vote
 from app.ratelimit import enforce_hourly_limit
 from app.schemas import BillOut, BillPage, BillText, HashtagOut, SummaryReportIn, TagOut, VoteIn, VoteOut
 from app.serializers import bills_out
 from app.services import feed as feed_service
 from app.services import hashtags, interactions
+from app.services.legislators import PARTY_CODES, like_pattern, name_matches
 from app.taxonomy import POLICY_AREAS
 
 router = APIRouter(tags=["bills"])
@@ -53,11 +55,14 @@ async def search(
     q: str | None = Query(None, max_length=200),
     tag: str | None = None,
     hashtag: str | None = Query(None, max_length=60),
+    party: Literal["D", "R", "I"] | None = None,
+    chamber: Literal["house", "senate"] | None = None,
     cursor: int = 0,
     limit: int = Query(20, le=50),
 ):
-    """Filter by topic and/or hashtag (exact, case-insensitive), and/or match words in the
-    title or any hashtag."""
+    """Filter by topic, hashtag (exact, case-insensitive), sponsor's party, and/or chamber, and/or
+    match words in the title, any hashtag, or a sponsor's or cosponsor's name. Title and hashtag
+    matches rank above name matches."""
     stmt = select(Bill).where(Bill.is_published.is_(True))
     if tag:
         if tag not in POLICY_AREAS:
@@ -66,14 +71,24 @@ async def search(
     if hashtag and hashtags.clean(hashtag):
         wanted = hashtags.clean(hashtag).lower()
         stmt = stmt.where(_has_hashtag(lambda h: func.lower(h) == wanted))
+    if party:
+        stmt = stmt.where(Bill.sponsor_party.in_(PARTY_CODES[party]))
+    if chamber:
+        stmt = stmt.where(Bill.bill_type.startswith("H" if chamber == "house" else "S"))
     term = (q or "").strip().lstrip("#").strip()
     if term:
-        like = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        pattern = f"%{like}%"
-        stmt = stmt.where(
-            or_(Bill.title.ilike(pattern, escape="\\"), _has_hashtag(lambda h: h.ilike(pattern, escape="\\")))
-        ).order_by(
-            func.similarity(Bill.title, term).desc(), Bill.last_action_date.desc().nulls_last()
+        pattern = like_pattern(term)
+        about = or_(Bill.title.ilike(pattern, escape="\\"), _has_hashtag(lambda h: h.ilike(pattern, escape="\\")))
+        named = select(Legislator.bioguide_id).where(name_matches(pattern))
+        by_name = or_(
+            Bill.sponsor_name.ilike(pattern, escape="\\"),
+            Bill.sponsor_id.in_(named),
+            Bill.id.in_(select(BillCosponsor.bill_id).where(BillCosponsor.bioguide_id.in_(named))),
+        )
+        stmt = stmt.where(or_(about, by_name)).order_by(
+            case((about, 0), else_=1),
+            func.similarity(Bill.title, term).desc(),
+            Bill.last_action_date.desc().nulls_last(),
         )
     else:
         stmt = stmt.order_by(Bill.last_action_date.desc().nulls_last())

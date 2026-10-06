@@ -4,6 +4,7 @@
   python -m app.cli seed-demo   # add sample bills + users for local UI work (no API keys needed)
   python -m app.cli normalize-hashtags  # merge spelling variants, drop generic hashtags (free)
   python -m app.cli retag       # regenerate every bill's hashtags so they reuse each other (OpenAI cost)
+  python -m app.cli backfill-cosponsors  # fetch sponsor + cosponsor details for existing bills (free)
 """
 
 import asyncio
@@ -106,6 +107,33 @@ async def retag(db) -> None:
     print(f"Done. {len(shared)} hashtags are now shared by 2+ bills.")
 
 
+async def backfill_cosponsors(db) -> None:
+    """Fetch sponsor and cosponsor details for bills ingested before they were tracked.
+    Congress.gov calls only (free): one per bill, plus one per 250 cosponsors."""
+    from app.services import legislators
+    from app.services.congress import CongressClient
+
+    api = CongressClient()
+    keys = (await db.execute(
+        select(Bill.id, Bill.congress_number, Bill.bill_type, Bill.bill_number).order_by(Bill.ingested_at)
+    )).all()
+    failed = 0
+    try:
+        for i, (bill_id, congress, bill_type, number) in enumerate(keys, 1):
+            try:
+                bill = await db.get(Bill, bill_id)
+                await legislators.sync_bill(db, api, bill, await api.bill_detail(congress, bill_type, number))
+                await db.commit()
+                print(f"  [{i}/{len(keys)}] {bill.label}: {bill.cosponsor_count} cosponsors")
+            except Exception as e:
+                await db.rollback()
+                failed += 1
+                print(f"  [{i}/{len(keys)}] {bill_type} {number} failed: {e}")
+    finally:
+        await api.close()
+    print(f"Done. {len(keys) - failed} bills updated, {failed} failed.")
+
+
 async def main(cmd: str) -> None:
     sessions = worker_sessionmaker()
     async with sessions() as db:
@@ -122,6 +150,8 @@ async def main(cmd: str) -> None:
             print(f"Cleaned hashtags on {await hashtags.normalize_all(db)} bills.")
         elif cmd == "retag":
             await retag(db)
+        elif cmd == "backfill-cosponsors":
+            await backfill_cosponsors(db)
         else:
             print(__doc__)
 

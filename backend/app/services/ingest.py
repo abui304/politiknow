@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models import Bill, IngestState
-from app.services import hashtags, llm, notify
+from app.services import hashtags, legislators, llm, notify
 from app.services.congress import CongressClient, status_from_action
 
 log = logging.getLogger(__name__)
@@ -66,15 +66,12 @@ async def ingest_bill(
 
     # Step 6 (metadata) first: it's cheap, and status changes matter even without new text.
     detail = await api.bill_detail(congress, bill_type, number)
-    sponsor = (detail.get("sponsors") or [{}])[0]
     latest = detail.get("latestAction") or {}
     if is_new:
         bill = Bill(congress_number=congress, bill_type=bill_type, bill_number=number)
         db.add(bill)
     bill.title = detail.get("title") or bill.title or f"{bill_type} {number}"
-    bill.sponsor_id = sponsor.get("bioguideId")
-    bill.sponsor_name = sponsor.get("fullName")
-    bill.sponsor_party = sponsor.get("party")
+    await legislators.sync_bill(db, api, bill, detail)
     bill.latest_action_text = latest.get("text")
     bill.status = status_from_action(latest.get("text"))
     bill.congress_url = detail.get("legislationUrl")

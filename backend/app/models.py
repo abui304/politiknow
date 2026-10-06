@@ -89,7 +89,7 @@ class Bill(Base):
     full_text: Mapped[str | None] = mapped_column(Text)
     primary_tags: Mapped[list[str]] = mapped_column(JSONB, default=list)
     sub_tags: Mapped[list[str]] = mapped_column(JSONB, default=list)
-    sponsor_id: Mapped[str | None] = mapped_column(String(50))
+    sponsor_id: Mapped[str | None] = mapped_column(String(50), index=True)  # legislators.bioguide_id
     sponsor_name: Mapped[str | None] = mapped_column(String(255))
     sponsor_party: Mapped[str | None] = mapped_column(String(5))  # D / R / I / ID / L
     status: Mapped[str] = mapped_column(String(50), default="introduced")
@@ -97,6 +97,8 @@ class Bill(Base):
     congress_url: Mapped[str | None] = mapped_column(Text)
     net_score: Mapped[int] = mapped_column(Integer, default=0)
     comment_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Current (not withdrawn) cosponsors, as reported by Congress.gov; the list is refetched when it changes.
+    cosponsor_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     is_trending: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     trending_score: Mapped[float] = mapped_column(Float, default=0.0)
     # Hidden from the feed until full text exists and is summarized.
@@ -125,6 +127,44 @@ class Bill(Base):
             "HCONRES": "H.Con.Res.", "SCONRES": "S.Con.Res.", "HRES": "H.Res.", "SRES": "S.Res.",
         }
         return f"{names.get(self.bill_type, self.bill_type)} {self.bill_number}"
+
+
+class Legislator(Base):
+    """A member of Congress who sponsored or cosponsored at least one ingested bill."""
+
+    __tablename__ = "legislators"
+
+    bioguide_id: Mapped[str] = mapped_column(String(20), primary_key=True)
+    full_name: Mapped[str] = mapped_column(String(255))  # Congress.gov style: "Sen. Warren, Elizabeth [D-MA]"
+    first_name: Mapped[str | None] = mapped_column(String(100))
+    last_name: Mapped[str | None] = mapped_column(String(100))
+    party: Mapped[str | None] = mapped_column(String(5))
+    state: Mapped[str | None] = mapped_column(String(2))
+    district: Mapped[int | None] = mapped_column(Integer)
+    chamber: Mapped[str | None] = mapped_column(String(10))  # house / senate
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    @property
+    def name(self) -> str:
+        """Display name, e.g. "Elizabeth Warren"."""
+        if self.first_name and self.last_name:
+            return f"{self.first_name} {self.last_name}"
+        return self.full_name
+
+
+class BillCosponsor(Base):
+    __tablename__ = "bill_cosponsors"
+
+    bill_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bills.id", ondelete="CASCADE"), primary_key=True)
+    bioguide_id: Mapped[str] = mapped_column(
+        ForeignKey("legislators.bioguide_id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    is_original: Mapped[bool] = mapped_column(Boolean, default=False)
+    sponsorship_date: Mapped[date | None] = mapped_column(Date)
+
+    legislator: Mapped[Legislator] = relationship(lazy="joined")
 
 
 class Vote(Base):

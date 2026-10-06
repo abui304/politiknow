@@ -77,6 +77,8 @@ export default function RootLayout() {
               <Stack.Protected guard={signedIn && stage === 'ready'}>
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="bill/[id]" />
+                <Stack.Screen name="cosponsors/[id]" />
+                <Stack.Screen name="legislator/[id]" />
                 <Stack.Screen name="user/[id]" />
                 <Stack.Screen name="settings" />
               </Stack.Protected>

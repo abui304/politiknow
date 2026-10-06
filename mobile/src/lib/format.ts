@@ -15,6 +15,14 @@ export function statusOf(status: string) {
   return STATUS_LABELS[status] ?? status.replace(/_/g, ' ');
 }
 
+/** "Senator · MA" or "Representative · CA-11" ("CA-AL" for an at-large seat). */
+export function legislatorPlace(l: { chamber: string | null; state: string | null; district: number | null }) {
+  const role = l.chamber === 'senate' ? 'Senator' : 'Representative';
+  if (!l.state) return role;
+  const seat = l.chamber === 'senate' || l.district === null ? l.state : `${l.state}-${l.district || 'AL'}`;
+  return `${role} · ${seat}`;
+}
+
 export function shortDate(iso: string | null | undefined): string {
   if (!iso) return '';
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });

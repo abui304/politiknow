@@ -3,9 +3,17 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, ScrollView, StyleSheet, View } from 'react-native';
 
 import { BillCard } from '@/components/BillCard';
+import { LegislatorRow } from '@/components/LegislatorRow';
 import { BouncyPressable, Chip, Empty, Field, Icon, Loading, Screen, Txt } from '@/components/ui';
-import { usePopularHashtags, useSearch, useTags } from '@/lib/queries';
-import { colors, radius, space, sticker, type } from '@/theme';
+import { useLegislators, usePopularHashtags, useSearch, useTags } from '@/lib/queries';
+import type { Chamber, PartyFilter } from '@/lib/types';
+import { colors, party as parties, radius, space, sticker, type } from '@/theme';
+
+const PARTIES: PartyFilter[] = ['D', 'R', 'I'];
+const CHAMBERS: { key: Chamber; label: string }[] = [
+  { key: 'house', label: 'House' },
+  { key: 'senate', label: 'Senate' },
+];
 
 function useDebounced<T>(value: T, ms = 350) {
   const [v, setV] = useState(value);
@@ -16,9 +24,13 @@ function useDebounced<T>(value: T, ms = 350) {
   return v;
 }
 
+const billCount = (n: number) => `${n} ${n === 1 ? 'bill' : 'bills'}`;
+
 export default function Search() {
   const [text, setText] = useState('');
   const [tag, setTag] = useState<string | null>(null);
+  const [party, setParty] = useState<PartyFilter | null>(null);
+  const [chamber, setChamber] = useState<Chamber | null>(null);
   // The hashtag filter lives in the URL so tapping a hashtag anywhere opens /search?hashtag=...
   const hashtag = useLocalSearchParams<{ hashtag?: string }>().hashtag || null;
   const setHashtag = (h: string | null) => router.setParams({ hashtag: h ?? undefined });
@@ -26,9 +38,10 @@ export default function Search() {
   const q = useDebounced(text.trim());
   const { data: tags } = useTags();
   const { data: popular } = usePopularHashtags();
-  const results = useSearch(q, tag, hashtag);
+  const results = useSearch({ q, tag, hashtag, party, chamber });
+  const { data: legislators } = useLegislators(q.startsWith('#') ? '' : q, party, chamber);
   const bills = results.data?.pages.flatMap((p) => p.items) ?? [];
-  const searching = Boolean(q || tag || hashtag);
+  const searching = Boolean(q || tag || hashtag || party || chamber);
 
   return (
     <Screen padded={false}>
@@ -45,7 +58,7 @@ export default function Search() {
             <Field
               value={text}
               onChangeText={setText}
-              placeholder="Search titles and #hashtags…"
+              placeholder="Search titles, #hashtags, or legislators…"
               returnKeyType="search"
               autoCorrect={false}
             />
@@ -69,6 +82,40 @@ export default function Search() {
                 />
               ))}
             </ScrollView>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+              {PARTIES.map((code) => (
+                <Chip
+                  key={code}
+                  label={parties[code].label}
+                  selected={party === code}
+                  color={parties[code].soft}
+                  onPress={() => setParty(party === code ? null : code)}
+                />
+              ))}
+              <View style={styles.divider} />
+              {CHAMBERS.map((c) => (
+                <Chip
+                  key={c.key}
+                  label={c.label}
+                  selected={chamber === c.key}
+                  color={colors.lilac}
+                  onPress={() => setChamber(chamber === c.key ? null : c.key)}
+                />
+              ))}
+            </ScrollView>
+            {q && legislators?.length ? (
+              <View style={{ gap: space.sm }}>
+                <Txt style={type.h3}>Legislators</Txt>
+                {legislators.map((l) => (
+                  <LegislatorRow
+                    key={l.bioguide_id}
+                    legislator={l}
+                    note={billCount(l.sponsored_count + l.cosponsored_count)}
+                  />
+                ))}
+                <Txt style={[type.h3, { marginTop: space.sm }]}>Bills</Txt>
+              </View>
+            ) : null}
           </View>
         }
         ListEmptyComponent={
@@ -84,12 +131,16 @@ export default function Search() {
                   </View>
                 </>
               ) : null}
-              <Empty icon="compass" title="Explore" body="Type a keyword, tap a topic, or pick a hashtag to find bills." />
+              <Empty
+                icon="compass"
+                title="Explore"
+                body="Type a keyword or a legislator's name, tap a topic, party, or chamber, or pick a hashtag to find bills."
+              />
             </View>
           ) : results.isLoading ? (
             <Loading label="Searching…" />
           ) : (
-            <Empty icon="search" title="Nothing found" body="Try a different word, topic, or hashtag." />
+            <Empty icon="search" title="Nothing found" body="Try a different word, name, topic, or hashtag." />
           )
         }
         ListFooterComponent={results.isFetchingNextPage ? <ActivityIndicator color={colors.blue} /> : null}
@@ -102,6 +153,7 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: space.lg, paddingBottom: space.xxl, width: '100%', maxWidth: 520, alignSelf: 'center' },
   row: { gap: 8, paddingVertical: 4, paddingRight: 8 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  divider: { width: 2, alignSelf: 'stretch', marginVertical: 6, backgroundColor: colors.hairline, borderRadius: 1 },
   activeHashtag: {
     flexDirection: 'row',
     alignItems: 'center',

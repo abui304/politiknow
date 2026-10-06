@@ -69,6 +69,19 @@ class CongressClient:
         data = await self._get(f"{BASE}/bill/{congress}/{bill_type.lower()}/{number}")
         return data["bill"]
 
+    async def cosponsors(self, congress: int, bill_type: str, number: int) -> list[dict]:
+        """Every cosponsor of a bill, including withdrawn ones (they carry sponsorshipWithdrawnDate)."""
+        members: list[dict] = []
+        while True:
+            data = await self._get(
+                f"{BASE}/bill/{congress}/{bill_type.lower()}/{number}/cosponsors",
+                {"offset": len(members), "limit": 250},
+            )
+            page = data.get("cosponsors") or []
+            members.extend(page)
+            if not page or len(members) >= data.get("pagination", {}).get("count", 0):
+                return members
+
     async def latest_text(self, congress: int, bill_type: str, number: int) -> tuple[str, str] | None:
         """Returns (version_type, plain_text) for the newest text version, or None if not published yet."""
         data = await self._get(f"{BASE}/bill/{congress}/{bill_type.lower()}/{number}/text")

@@ -12,22 +12,40 @@ import type {
   AppNotification,
   Bill,
   BillPage,
+  Chamber,
   Comment,
   CommentWithBill,
+  Cosponsor,
   Hashtag,
+  Legislator,
+  LegislatorRole,
   Me,
   NotificationPrefs,
+  PartyFilter,
   Profile,
   Tag,
 } from './types';
+
+export type SearchFilters = {
+  q: string;
+  tag: string | null;
+  hashtag: string | null;
+  party: PartyFilter | null;
+  chamber: Chamber | null;
+};
 
 export const keys = {
   me: ['me'] as const,
   tags: ['tags'] as const,
   feed: ['feed'] as const,
-  search: (q: string, tag: string | null, hashtag: string | null) => ['search', q, tag, hashtag] as const,
+  search: (f: SearchFilters) => ['search', f] as const,
   hashtags: ['hashtags'] as const,
   bill: (id: string) => ['bill', id] as const,
+  cosponsors: (billId: string) => ['bill', billId, 'cosponsors'] as const,
+  legislators: (q: string, party: PartyFilter | null, chamber: Chamber | null) =>
+    ['legislators', q, party, chamber] as const,
+  legislator: (id: string) => ['legislator', id] as const,
+  legislatorBills: (id: string, role: LegislatorRole) => ['legislatorBills', id, role] as const,
   billText: (id: string) => ['bill', id, 'text'] as const,
   comments: (billId: string) => ['comments', billId] as const,
   profile: (id: string) => ['profile', id] as const,
@@ -50,20 +68,46 @@ export const useFeed = () =>
     getNextPageParam: (last) => last.next_cursor ?? undefined,
   });
 
-export const useSearch = (q: string, tag: string | null, hashtag: string | null) =>
+export const useSearch = (filters: SearchFilters) =>
   useInfiniteQuery({
-    queryKey: keys.search(q, tag, hashtag),
+    queryKey: keys.search(filters),
     queryFn: ({ pageParam }) => {
       const params = new URLSearchParams({ cursor: String(pageParam), limit: '20' });
-      if (q) params.set('q', q);
-      if (tag) params.set('tag', tag);
-      if (hashtag) params.set('hashtag', hashtag);
+      for (const [k, v] of Object.entries(filters)) if (v) params.set(k, v);
       return api<BillPage>(`/search?${params}`);
     },
     initialPageParam: 0,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
-    enabled: Boolean(q || tag || hashtag),
+    enabled: Object.values(filters).some(Boolean),
   });
+
+/** Legislators whose name matches `q`, most active first. */
+export const useLegislators = (q: string, party: PartyFilter | null, chamber: Chamber | null) =>
+  useQuery({
+    queryKey: keys.legislators(q, party, chamber),
+    queryFn: () => {
+      const params = new URLSearchParams({ q, limit: '5' });
+      if (party) params.set('party', party);
+      if (chamber) params.set('chamber', chamber);
+      return api<Legislator[]>(`/legislators?${params}`);
+    },
+    enabled: Boolean(q),
+  });
+
+export const useLegislator = (id: string) =>
+  useQuery({ queryKey: keys.legislator(id), queryFn: () => api<Legislator>(`/legislators/${id}`) });
+
+export const useLegislatorBills = (id: string, role: LegislatorRole) =>
+  useInfiniteQuery({
+    queryKey: keys.legislatorBills(id, role),
+    queryFn: ({ pageParam }) =>
+      api<BillPage>(`/legislators/${id}/bills?role=${role}&cursor=${pageParam}&limit=15`),
+    initialPageParam: 0,
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
+  });
+
+export const useBillCosponsors = (billId: string) =>
+  useQuery({ queryKey: keys.cosponsors(billId), queryFn: () => api<Cosponsor[]>(`/bills/${billId}/cosponsors`) });
 
 export const usePopularHashtags = () =>
   useQuery({ queryKey: keys.hashtags, queryFn: () => api<Hashtag[]>('/hashtags?limit=24'), staleTime: 5 * 60_000 });
@@ -97,7 +141,7 @@ export const useNotifications = () =>
 
 // ---------- writes ----------
 
-/** Apply a change to a bill everywhere it's cached (feed, search pages, detail). */
+/** Apply a change to a bill everywhere it's cached (feed, search and legislator pages, detail). */
 function patchBill(qc: QueryClient, id: string, patch: Partial<Bill>) {
   const patchPages = (data: InfiniteData<BillPage> | undefined) =>
     data && {
@@ -109,6 +153,7 @@ function patchBill(qc: QueryClient, id: string, patch: Partial<Bill>) {
     };
   qc.setQueryData(keys.feed, patchPages);
   qc.setQueriesData({ queryKey: ['search'] }, patchPages);
+  qc.setQueriesData({ queryKey: ['legislatorBills'] }, patchPages);
   qc.setQueryData<Bill>(keys.bill(id), (b) => b && { ...b, ...patch });
 }
 

@@ -121,8 +121,10 @@ class BillOut(BaseModel):
     summary_detailed: str | None
     primary_tags: list[str]
     sub_tags: list[str]
+    sponsor_id: str | None
     sponsor_name: str | None
     sponsor_party: str | None
+    cosponsor_count: int
     status: str
     latest_action_text: str | None
     congress_url: str | None
@@ -155,6 +157,30 @@ class VoteOut(BaseModel):
 
 class SummaryReportIn(BaseModel):
     feedback: str | None = Field(default=None, max_length=2000)
+
+
+# ---------- legislators ----------
+
+class LegislatorBase(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    bioguide_id: str
+    name: str
+    full_name: str
+    party: str | None
+    state: str | None
+    district: int | None
+    chamber: str | None
+
+
+class LegislatorOut(LegislatorBase):
+    sponsored_count: int  # published bills only
+    cosponsored_count: int
+
+
+class CosponsorOut(LegislatorBase):
+    is_original: bool
+    sponsorship_date: date | None
 
 
 # ---------- comments ----------
