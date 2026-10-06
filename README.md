@@ -29,13 +29,13 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
   - **Recency:** halves every 30 days since the bill's last action (configurable).
   - **Trending:** bills getting unusual engagement in the last 24 hours (see below).
   - **Followed users:** bills that people you follow voted on or commented on.
-- Each card is **colored by the sponsor's party** (blue Democrat, red Republican, yellow Independent) and shows the bill number, date, status (Introduced, In committee, Passed House, ... Became law), a short plain-English summary, topics, a Trending badge, votes, comment count, and Share.
+- Each card is **colored by the sponsor's party** (blue Democrat, red Republican, yellow Independent) and shows the bill number, date, a **timeline** of its path through Congress (Intro, Committee, House, Senate, President, Law) with the date of each step reached, a short plain-English summary, topics, a Trending badge, votes, comment count, and Share.
 - Pull down to refresh and re-rank.
 
 ### Bill pages
 - **Simple** (about 150–250 words, no jargon) and **Detailed** (about 400–600 words) AI summaries, switchable with a toggle.
 - A persistent notice that the summary is AI-generated; tapping it shows the **full bill text** in the app (the first 20,000 characters, with the rest on Congress.gov).
-- Sponsor, introduction date, latest status, topics, and **#hashtags**.
+- The bill's **timeline** with dates, its latest action, sponsor, topics, and **#hashtags**. Resolutions show their shorter path (a simple resolution only needs its own chamber; concurrent resolutions skip the President), and a vetoed bill ends in Vetoed.
 - **Tap the sponsor** to open their legislator page, or tap **Cosponsors (N)** to see every current cosponsor (original cosponsors first), each linking to their own page.
 - Link to the official Congress.gov page, and a **Report inaccuracy** button with an optional note.
 - Up/down voting and sharing (the phone's share sheet; on web, the browser's share menu or copy to clipboard).
@@ -95,7 +95,7 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
 A background job runs **4 times a day** (06:00, 12:00, 18:00, 23:00 UTC). It can also be run by hand. Each run:
 
 1. Asks Congress.gov for bills in the current Congress (119th) updated in a time window, **oldest first**.
-2. Fetches each bill's details (sponsor, party, status, policy area), its **cosponsors** (only when their count has changed), and its **latest full text**.
+2. Fetches each bill's details (sponsor, party, policy area), its **actions** (only when there's a new latest action) to build its timeline, its **cosponsors** (only when their count has changed), and its **latest full text**. A bill's status is the furthest step it has reached, so it never slides back (e.g. to In committee when a House-passed bill is referred to a Senate committee).
 3. If the text is new or changed, makes three GPT-4o-mini calls: simple summary, detailed summary, and topics + hashtags. Unchanged text is **never re-summarized**.
 4. Publishes the bill and sends alerts to people who follow its topics (and status-change alerts to people who engaged with it).
 
@@ -162,6 +162,7 @@ Run from `backend/`:
 | `.venv/bin/python -m app.cli normalize-hashtags` | Merge hashtag spelling variants, drop generic ones | Free |
 | `.venv/bin/python -m app.cli retag` | Regenerate every bill's hashtags so they reuse each other | OpenAI, one call per bill |
 | `.venv/bin/python -m app.cli backfill-cosponsors` | Fetch sponsor and cosponsor details for bills ingested before they were tracked | Free (Congress.gov only) |
+| `.venv/bin/python -m app.cli backfill-timelines` | Build every bill's timeline from its Congress.gov actions and reset its status | Free (Congress.gov only) |
 | `.venv/bin/python -m app.cli sync-members` | Refresh every legislator's photo, years in office, and office details (ingestion also does up to 100 per run, monthly per member) | Free (Congress.gov only) |
 | `.venv/bin/python -m app.cli build-maps` | Rebuild the state and district maps in `backend/app/data/maps/` (needs `requirements-dev.txt`) | Free |
 | `.venv/bin/python -m app.cli seed-demo` | Add 6 sample (older) bills and demo users, for UI work without API keys | Free without an OpenAI key |
@@ -233,14 +234,14 @@ backend/tests/      test suite
 
 mobile/src/
   app/              screens (Expo Router: each file is a route)
-  components/       bill card, legislator row/photo, district map, comments, profile, UI kit
+  components/       bill card and timeline, legislator row/photo, district map, comments, profile, UI kit
   lib/              API client, auth, data hooks, push, formatting
   theme.ts          colors, fonts, sticker style
 ```
 
 ## Notes
 
-- **Existing databases:** after `alembic upgrade head`, run `backfill-cosponsors` and then `sync-members` once, so bills ingested earlier get their sponsors and cosponsors linked and every legislator gets a photo and office details. New ingestion keeps them current.
+- **Existing databases:** after `alembic upgrade head`, run `backfill-cosponsors`, `backfill-timelines`, and then `sync-members` once, so bills ingested earlier get their sponsors and cosponsors linked and their timelines built, and every legislator gets a photo and office details. New ingestion keeps them current.
 - **District maps** reflect boundaries at the start of the 119th Congress. If states redraw districts, rerun `build-maps` once the Census Bureau publishes new files (update the file names in `services/district_maps.py`).
 - **Schema changes:** edit `backend/app/models.py`, then run `alembic revision --autogenerate -m "..."` and `alembic upgrade head`.
 - **Design:** the UI uses line icons only, no emoji. Bill cards keep the full party colors.

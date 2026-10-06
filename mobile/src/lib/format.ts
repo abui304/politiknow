@@ -34,6 +34,18 @@ export function shortDate(iso: string | null | undefined): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+/** "2025-06-12" -> "6/12/25", read as a calendar date (no time-zone shift). */
+export function numericDate(ymd: string): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return `${m}/${d}/${String(y).slice(2)}`;
+}
+
+/** "2025-06-12" -> "Jun 12, 2025", read as a calendar date (no time-zone shift). */
+export function calendarDate(ymd: string): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 export function timeAgo(iso: string): string {
   const secs = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
   if (secs < 60) return 'just now';

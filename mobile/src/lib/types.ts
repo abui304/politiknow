@@ -39,6 +39,14 @@ export type Profile = {
   created_at: string;
 };
 
+export type TimelineStep = {
+  stage: string;
+  label: string; // "Passed House"
+  short: string; // "House"
+  date: string | null; // YYYY-MM-DD
+  reached: boolean;
+};
+
 export type Bill = {
   id: string;
   label: string;
@@ -56,6 +64,7 @@ export type Bill = {
   cosponsor_count: number;
   status: string;
   latest_action_text: string | null;
+  timeline: TimelineStep[];
   congress_url: string | null;
   net_score: number;
   comment_count: number;

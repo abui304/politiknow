@@ -8,10 +8,11 @@ from datetime import UTC, date, datetime, timedelta
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import timeline
 from app.config import settings
 from app.models import Bill, IngestState
 from app.services import hashtags, legislators, llm, notify
-from app.services.congress import CongressClient, status_from_action
+from app.services.congress import CongressClient
 
 log = logging.getLogger(__name__)
 # Ingestion walks a fixed time window oldest-first and saves its position, so a run that
@@ -72,11 +73,16 @@ async def ingest_bill(
         db.add(bill)
     bill.title = detail.get("title") or bill.title or f"{bill_type} {number}"
     await legislators.sync_bill(db, api, bill, detail)
-    bill.latest_action_text = latest.get("text")
-    bill.status = status_from_action(latest.get("text"))
     bill.congress_url = detail.get("legislationUrl")
     if detail.get("introducedDate"):
         bill.introduced_date = date.fromisoformat(detail["introducedDate"])
+    # Timeline: re-read the action list only when there's a new latest action.
+    if latest.get("text") != bill.latest_action_text or not bill.milestones:
+        bill.milestones = timeline.milestones(
+            await api.actions(congress, bill_type, number), bill.introduced_date
+        )
+    bill.latest_action_text = latest.get("text")
+    bill.status = timeline.status(bill_type, bill.milestones)
     bill.last_action_date = _parse_dt(latest.get("actionDate")) or _parse_dt(detail.get("updateDate"))
 
     # Step 3: full text. Bills often appear days before their text is published;

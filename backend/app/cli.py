@@ -5,6 +5,7 @@
   python -m app.cli normalize-hashtags  # merge spelling variants, drop generic hashtags (free)
   python -m app.cli retag       # regenerate every bill's hashtags so they reuse each other (OpenAI cost)
   python -m app.cli backfill-cosponsors  # fetch sponsor + cosponsor details for existing bills (free)
+  python -m app.cli backfill-timelines   # build every bill's timeline from its actions (free)
   python -m app.cli sync-members  # refresh every legislator's photo, career, and office (free)
   python -m app.cli build-maps    # rebuild app/data/maps from Census boundaries (free; dev requirements)
 """
@@ -109,31 +110,56 @@ async def retag(db) -> None:
     print(f"Done. {len(shared)} hashtags are now shared by 2+ bills.")
 
 
+async def _for_each_bill(db, update) -> None:
+    """Runs `await update(api, bill)` on every bill, oldest first, committing each one.
+    `update` returns a short note to print."""
+    from app.services.congress import CongressClient
+
+    api = CongressClient()
+    ids = list(await db.scalars(select(Bill.id).order_by(Bill.ingested_at)))
+    failed = 0
+    try:
+        for i, bill_id in enumerate(ids, 1):
+            bill = await db.get(Bill, bill_id)
+            label = bill.label
+            try:
+                note = await update(api, bill)
+                await db.commit()
+                print(f"  [{i}/{len(ids)}] {label}: {note}")
+            except Exception as e:
+                await db.rollback()
+                failed += 1
+                print(f"  [{i}/{len(ids)}] {label} failed: {e}")
+    finally:
+        await api.close()
+    print(f"Done. {len(ids) - failed} bills updated, {failed} failed.")
+
+
 async def backfill_cosponsors(db) -> None:
     """Fetch sponsor and cosponsor details for bills ingested before they were tracked.
     Congress.gov calls only (free): one per bill, plus one per 250 cosponsors."""
     from app.services import legislators
-    from app.services.congress import CongressClient
 
-    api = CongressClient()
-    keys = (await db.execute(
-        select(Bill.id, Bill.congress_number, Bill.bill_type, Bill.bill_number).order_by(Bill.ingested_at)
-    )).all()
-    failed = 0
-    try:
-        for i, (bill_id, congress, bill_type, number) in enumerate(keys, 1):
-            try:
-                bill = await db.get(Bill, bill_id)
-                await legislators.sync_bill(db, api, bill, await api.bill_detail(congress, bill_type, number))
-                await db.commit()
-                print(f"  [{i}/{len(keys)}] {bill.label}: {bill.cosponsor_count} cosponsors")
-            except Exception as e:
-                await db.rollback()
-                failed += 1
-                print(f"  [{i}/{len(keys)}] {bill_type} {number} failed: {e}")
-    finally:
-        await api.close()
-    print(f"Done. {len(keys) - failed} bills updated, {failed} failed.")
+    async def update(api, bill):
+        detail = await api.bill_detail(bill.congress_number, bill.bill_type, bill.bill_number)
+        await legislators.sync_bill(db, api, bill, detail)
+        return f"{bill.cosponsor_count} cosponsors"
+
+    await _for_each_bill(db, update)
+
+
+async def backfill_timelines(db) -> None:
+    """Build every bill's timeline from its Congress.gov actions (free: one call per bill), and
+    reset its status to the furthest step reached."""
+    from app import timeline
+
+    async def update(api, bill):
+        actions = await api.actions(bill.congress_number, bill.bill_type, bill.bill_number)
+        bill.milestones = timeline.milestones(actions, bill.introduced_date)
+        bill.status = timeline.status(bill.bill_type, bill.milestones)
+        return bill.status
+
+    await _for_each_bill(db, update)
 
 
 async def main(cmd: str) -> None:
@@ -158,6 +184,8 @@ async def main(cmd: str) -> None:
             await retag(db)
         elif cmd == "backfill-cosponsors":
             await backfill_cosponsors(db)
+        elif cmd == "backfill-timelines":
+            await backfill_timelines(db)
         elif cmd == "sync-members":
             from app.services import legislators
             from app.services.congress import CongressClient

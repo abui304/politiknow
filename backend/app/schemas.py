@@ -108,6 +108,14 @@ class ProfileOut(BaseModel):
 
 # ---------- bills ----------
 
+class TimelineStep(BaseModel):
+    stage: str
+    label: str  # "Passed House"
+    short: str  # "House"
+    date: date | None
+    reached: bool
+
+
 class BillOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -127,6 +135,7 @@ class BillOut(BaseModel):
     cosponsor_count: int
     status: str
     latest_action_text: str | None
+    timeline: list[TimelineStep]
     congress_url: str | None
     net_score: int
     comment_count: int

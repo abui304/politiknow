@@ -4,7 +4,6 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.models import Bill, Notification
-from app.services.congress import status_from_action
 from app.services.ingest import run_ingestion
 from tests.conftest import signup
 
@@ -26,6 +25,17 @@ class FakeCongress:
             "latestAction": {"actionDate": "2026-09-02", "text": self.action},
             "legislationUrl": "https://congress.gov/x",
         }
+
+    async def actions(self, congress, bill_type, number):
+        actions = [
+            {"actionDate": "2026-09-01", "type": "IntroReferral", "actionCode": "1000", "text": "Introduced in House"},
+            {"actionDate": "2026-09-02", "type": "IntroReferral",
+             "text": "Referred to the Committee on Energy and Commerce."},
+        ]
+        if "Passed House" in self.action:
+            actions.append({"actionDate": "2026-09-20", "type": "Floor", "actionCode": "8000",
+                            "text": f"Passed/agreed to in House: {self.action}"})
+        return actions
 
     async def member(self, bioguide_id):
         return {"state": "California", "currentMember": True,
@@ -61,13 +71,6 @@ async def test_ingestion_pipeline(client, db):
     await db.refresh(bills[2])
     assert bills[2].is_published
     assert bills[1].status == "passed_house"
-
-
-def test_status_from_action():
-    assert status_from_action("Became Public Law No: 119-5.") == "became_law"
-    assert status_from_action("Passed Senate without amendment by Unanimous Consent.") == "passed_senate"
-    assert status_from_action("Referred to the House Committee on Ways and Means.") == "in_committee"
-    assert status_from_action(None) == "introduced"
 
 
 class BigBacklogCongress(FakeCongress):

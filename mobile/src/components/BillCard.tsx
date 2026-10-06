@@ -1,13 +1,14 @@
 import { router } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { shortDate, statusOf, truncate } from '@/lib/format';
+import { shortDate, truncate } from '@/lib/format';
 import { useVoteBill } from '@/lib/queries';
 import { shareBill } from '@/lib/share';
 import { toastError } from '@/lib/toast';
 import type { Bill } from '@/lib/types';
 import { colors, fonts, partyColors, radius, space, sticker, type } from '@/theme';
 
+import { BillTimeline } from './BillTimeline';
 import { BouncyPressable, Chip, Icon, Txt } from './ui';
 
 export function VoteControl({ bill, onDark = true }: { bill: Bill; onDark?: boolean }) {
@@ -47,7 +48,6 @@ export function PartyBadge({ code }: { code: string | null }) {
 
 export function BillCard({ bill }: { bill: Bill }) {
   const p = partyColors(bill.sponsor_party);
-  const status = statusOf(bill.status);
   const open = () => router.push({ pathname: '/bill/[id]', params: { id: bill.id } });
 
   return (
@@ -68,9 +68,9 @@ export function BillCard({ bill }: { bill: Bill }) {
           <Txt style={type.h3} numberOfLines={3}>
             {bill.title}
           </Txt>
-          <Txt style={[type.small, { marginTop: 4 }]}>
-            {status}
-          </Txt>
+          <View style={{ marginTop: space.md }}>
+            <BillTimeline bill={bill} />
+          </View>
           {bill.summary_simple ? (
             <Txt style={[type.body, { marginTop: space.sm, color: colors.inkSoft }]}>
               {truncate(bill.summary_simple, 240)} <Text style={{ fontFamily: fonts.extrabold, color: p.main }}>Read more</Text>

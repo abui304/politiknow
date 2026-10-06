@@ -69,6 +69,18 @@ class CongressClient:
         data = await self._get(f"{BASE}/bill/{congress}/{bill_type.lower()}/{number}")
         return data["bill"]
 
+    async def actions(self, congress: int, bill_type: str, number: int) -> list[dict]:
+        actions: list[dict] = []
+        while True:
+            data = await self._get(
+                f"{BASE}/bill/{congress}/{bill_type.lower()}/{number}/actions",
+                {"offset": len(actions), "limit": 250},
+            )
+            page = data.get("actions") or []
+            actions.extend(page)
+            if not page or len(actions) >= data.get("pagination", {}).get("count", 0):
+                return actions
+
     async def member(self, bioguide_id: str) -> dict:
         data = await self._get(f"{BASE}/member/{bioguide_id}")
         return data["member"]
@@ -108,21 +120,3 @@ def _squash_blank_lines(text: str) -> str:
         if line or (out and out[-1]):
             out.append(line)
     return "\n".join(out).strip()
-
-
-def status_from_action(action_text: str | None) -> str:
-    """Rough lifecycle stage from the latest action's text."""
-    t = (action_text or "").lower()
-    if "became public law" in t or "became private law" in t:
-        return "became_law"
-    if "vetoed" in t:
-        return "vetoed"
-    if "presented to president" in t or "signed by president" in t:
-        return "to_president"
-    if "passed senate" in t or "passed/agreed to in senate" in t:
-        return "passed_senate"
-    if "passed house" in t or "passed/agreed to in house" in t or "on passage passed" in t:
-        return "passed_house"
-    if "committee" in t or "referred to" in t or "subcommittee" in t:
-        return "in_committee"
-    return "introduced"

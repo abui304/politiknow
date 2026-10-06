@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { PartyBadge, VoteControl } from '@/components/BillCard';
+import { BillTimeline } from '@/components/BillTimeline';
 import { CommentsSection } from '@/components/Comments';
 import { BouncyPressable, Button, Card, Chip, Empty, Field, Icon, Loading, Screen, TopBar, Txt } from '@/components/ui';
 import { api } from '@/lib/api';
-import { shortDate, statusOf } from '@/lib/format';
 import { useBill, useBillText } from '@/lib/queries';
 import { shareBill } from '@/lib/share';
 import { toast, toastError } from '@/lib/toast';
@@ -37,7 +37,6 @@ export default function BillDetail() {
   }
 
   const p = partyColors(bill.sponsor_party);
-  const status = statusOf(bill.status);
   const summary = level === 'simple' ? bill.summary_simple : bill.summary_detailed;
   const sponsorId = bill.sponsor_id;
   const openCongress = () => bill.congress_url && WebBrowser.openBrowserAsync(bill.congress_url);
@@ -60,9 +59,15 @@ export default function BillDetail() {
           {bill.is_trending ? <Chip label="Trending" selected color={colors.yellow} /> : null}
         </View>
         <Text style={styles.heroTitle}>{bill.title}</Text>
+        <View style={styles.heroTimeline}>
+          <BillTimeline bill={bill} onDark />
+          {bill.latest_action_text ? (
+            <Text style={styles.heroLatest} numberOfLines={3}>
+              Latest: {bill.latest_action_text}
+            </Text>
+          ) : null}
+        </View>
         <View style={styles.heroMeta}>
-          <Text style={styles.heroMetaText}>{status}</Text>
-          {bill.introduced_date ? <Text style={styles.heroMetaText}>Introduced {shortDate(bill.introduced_date)}</Text> : null}
           {bill.sponsor_name ? (
             sponsorId ? (
               <BouncyPressable
@@ -199,6 +204,8 @@ const styles = StyleSheet.create({
   heroLabel: { fontFamily: fonts.black, color: '#fff', fontSize: 16, flex: 1 },
   heroTitle: { fontFamily: fonts.black, color: '#fff', fontSize: 22, lineHeight: 28 },
   heroMeta: { gap: 4 },
+  heroTimeline: { gap: space.sm, backgroundColor: 'rgba(0,0,0,0.12)', borderRadius: radius.md, padding: space.md },
+  heroLatest: { fontFamily: fonts.semibold, color: 'rgba(255,255,255,0.9)', fontSize: 13, lineHeight: 18 },
   heroMetaText: { fontFamily: fonts.bold, color: 'rgba(255,255,255,0.92)', fontSize: 14 },
   heroLink: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', flexWrap: 'wrap' },
   heroLinkText: { fontFamily: fonts.extrabold, color: '#fff', fontSize: 14, textDecorationLine: 'underline' },

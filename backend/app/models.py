@@ -24,6 +24,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app import timeline
 from app.db import Base
 
 
@@ -94,6 +95,8 @@ class Bill(Base):
     sponsor_party: Mapped[str | None] = mapped_column(String(5))  # D / R / I / ID / L
     status: Mapped[str] = mapped_column(String(50), default="introduced")
     latest_action_text: Mapped[str | None] = mapped_column(Text)
+    # {stage: ISO date} for each milestone reached (see app/timeline.py).
+    milestones: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     congress_url: Mapped[str | None] = mapped_column(Text)
     net_score: Mapped[int] = mapped_column(Integer, default=0)
     comment_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -118,6 +121,11 @@ class Bill(Base):
             postgresql_ops={"title": "gin_trgm_ops"},
         ),
     )
+
+    @property
+    def timeline(self) -> list[dict]:
+        intro = {"introduced": self.introduced_date.isoformat()} if self.introduced_date else {}
+        return timeline.steps(self.bill_type, intro | (self.milestones or {}))
 
     @property
     def label(self) -> str:
