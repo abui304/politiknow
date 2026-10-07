@@ -12,6 +12,8 @@ type Props = {
   /** The district to highlight; null fills the whole state (senators). */
   district: string | null;
   party: string | null;
+  /** Thumbnail: no city labels or state inset, thinner frame. */
+  compact?: boolean;
 };
 
 const ASPECT = 4 / 3;
@@ -51,8 +53,8 @@ function pickCities(map: StateMap, view: Box, district: string | null, inset: bo
   return picked;
 }
 
-export function DistrictMap({ map, district, party }: Props) {
-  const [px, setPx] = useState(320); // rendered width, so strokes and text stay a constant on-screen size
+export function DistrictMap({ map, district, party, compact = false }: Props) {
+  const [px, setPx] = useState(compact ? 96 : 320); // rendered width, so strokes and text stay a constant on-screen size
   const p = partyColors(party);
   const target = district !== null ? map.districts[district] : undefined;
   const stateBox: Box = [0, 0, map.width, map.height];
@@ -60,14 +62,14 @@ export function DistrictMap({ map, district, party }: Props) {
   const zoomed = Boolean(target && Math.max(target.bbox[2] - target.bbox[0], target.bbox[3] - target.bbox[1]) < longSide * ZOOM_BELOW);
   const view = zoomed && target ? fit(target.bbox, Math.max(target.bbox[2] - target.bbox[0], target.bbox[3] - target.bbox[1]) * 0.45) : fit(stateBox, longSide * 0.05);
   const unit = (view[2] - view[0]) / px; // view units per screen pixel
-  const cities = pickCities(map, view, target ? district : null, zoomed);
+  const cities = compact ? [] : pickCities(map, view, target ? district : null, zoomed);
   const others = Object.entries(map.districts).filter(([n]) => n !== district);
   const wholeState = !target;
 
   return (
     <View
-      style={[styles.frame, sticker(3, radius.lg), { aspectRatio: ASPECT }]}
-      onLayout={(e) => setPx(e.nativeEvent.layout.width || 320)}>
+      style={[styles.frame, compact ? sticker(2, radius.md) : sticker(3, radius.lg), { aspectRatio: ASPECT }]}
+      onLayout={(e) => setPx(e.nativeEvent.layout.width || px)}>
       <Svg width="100%" height="100%" viewBox={`${view[0]} ${view[1]} ${view[2] - view[0]} ${view[3] - view[1]}`}>
         {/* State: hard offset shadow, then the land. */}
         <Path d={map.outline} fill={colors.line} transform={`translate(${3 * unit} ${3 * unit})`} />
@@ -102,7 +104,7 @@ export function DistrictMap({ map, district, party }: Props) {
           );
         })}
       </Svg>
-      {zoomed && target ? <StateInset map={map} district={target.path} color={p.main} view={view} /> : null}
+      {zoomed && target && !compact ? <StateInset map={map} district={target.path} color={p.main} view={view} /> : null}
     </View>
   );
 }

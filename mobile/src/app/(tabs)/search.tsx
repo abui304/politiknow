@@ -1,13 +1,13 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, ScrollView, StyleSheet, View } from 'react-native';
 
 import { BillCard } from '@/components/BillCard';
 import { LegislatorRow } from '@/components/LegislatorRow';
-import { BouncyPressable, Chip, Empty, Field, Icon, Loading, Screen, Txt } from '@/components/ui';
+import { BottomSheet, BouncyPressable, Button, Chip, Empty, Field, Icon, Loading, Screen, Txt } from '@/components/ui';
 import { useLegislators, usePopularHashtags, useSearch, useStageCounts, useTags } from '@/lib/queries';
 import type { Chamber, PartyFilter, StageFilter } from '@/lib/types';
-import { colors, party as parties, radius, space, sticker, type } from '@/theme';
+import { colors, fonts, party as parties, radius, space, sticker, type } from '@/theme';
 
 const PARTIES: PartyFilter[] = ['D', 'R', 'I'];
 const CHAMBERS: { key: Chamber; label: string }[] = [
@@ -47,11 +47,20 @@ export default function Search() {
   const q = useDebounced(text.trim());
   const { data: tags } = useTags();
   const { data: popular } = usePopularHashtags();
-  const { data: stageCounts } = useStageCounts();
+  const { data: stageCounts } = useStageCounts({ q, tag, hashtag, party, chamber });
   const results = useSearch({ q, tag, hashtag, party, chamber, stage });
   const { data: legislators } = useLegislators(q.startsWith('#') ? '' : q, party, chamber);
   const bills = results.data?.pages.flatMap((p) => p.items) ?? [];
   const searching = Boolean(q || tag || hashtag || party || chamber || stage);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filterCount = [tag, party, chamber].filter(Boolean).length;
+  // Everything filtering the results except status, which shows in its own row.
+  const active = [
+    hashtag && { label: `#${hashtag}`, color: colors.yellow, remove: () => setHashtag(null) },
+    tag && { label: tag, color: colors.mint, remove: () => setTag(null) },
+    party && { label: parties[party].label, color: parties[party].soft, remove: () => setParty(null) },
+    chamber && { label: chamber === 'house' ? 'House' : 'Senate', color: colors.lilac, remove: () => setChamber(null) },
+  ].filter((f): f is { label: string; color: string; remove: () => void } => Boolean(f));
 
   return (
     <Screen padded={false}>
@@ -65,54 +74,39 @@ export default function Search() {
         ListHeaderComponent={
           <View style={{ gap: space.md, paddingTop: space.md, paddingBottom: space.lg }}>
             <Txt style={type.title}>Search</Txt>
-            <Field
-              value={text}
-              onChangeText={setText}
-              placeholder="Search titles, #hashtags, or legislators…"
-              returnKeyType="search"
-              autoCorrect={false}
-            />
-            {hashtag ? (
+            <View style={styles.searchRow}>
+              <View style={{ flex: 1 }}>
+                <Field
+                  value={text}
+                  onChangeText={setText}
+                  placeholder="Titles, #hashtags, legislators…"
+                  returnKeyType="search"
+                  autoCorrect={false}
+                />
+              </View>
               <BouncyPressable
-                onPress={() => setHashtag(null)}
-                style={[styles.activeHashtag, sticker(2, radius.pill)]}
-                accessibilityLabel={`Remove #${hashtag} filter`}>
-                <Txt style={type.bodyBold}>#{hashtag}</Txt>
-                <Icon name="x" size={16} />
+                onPress={() => setFiltersOpen(true)}
+                style={[styles.filterBtn, sticker(2, radius.md), filterCount > 0 && { backgroundColor: colors.yellow }]}
+                accessibilityRole="button"
+                accessibilityLabel={filterCount ? `Filters, ${filterCount} on` : 'Filters'}>
+                <Icon name="sliders" size={18} />
+                {filterCount ? <Txt style={styles.filterCount}>{filterCount}</Txt> : null}
               </BouncyPressable>
+            </View>
+            {active.length ? (
+              <View style={styles.wrap}>
+                {active.map((f) => (
+                  <BouncyPressable
+                    key={f.label}
+                    onPress={f.remove}
+                    style={[styles.activeFilter, sticker(2, radius.pill), { backgroundColor: f.color }]}
+                    accessibilityLabel={`Remove ${f.label} filter`}>
+                    <Txt style={styles.activeFilterText}>{f.label}</Txt>
+                    <Icon name="x" size={14} />
+                  </BouncyPressable>
+                ))}
+              </View>
             ) : null}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-              {tags?.map((t) => (
-                <Chip
-                  key={t.name}
-                  label={t.name}
-                  selected={tag === t.name}
-                  color={colors.mint}
-                  onPress={() => setTag(tag === t.name ? null : t.name)}
-                />
-              ))}
-            </ScrollView>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-              {PARTIES.map((code) => (
-                <Chip
-                  key={code}
-                  label={parties[code].label}
-                  selected={party === code}
-                  color={parties[code].soft}
-                  onPress={() => setParty(party === code ? null : code)}
-                />
-              ))}
-              <View style={styles.divider} />
-              {CHAMBERS.map((c) => (
-                <Chip
-                  key={c.key}
-                  label={c.label}
-                  selected={chamber === c.key}
-                  color={colors.lilac}
-                  onPress={() => setChamber(chamber === c.key ? null : c.key)}
-                />
-              ))}
-            </ScrollView>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
               {stageCounts
                 ?.filter((s) => s.bill_count > 0 || stage === s.key)
@@ -157,7 +151,7 @@ export default function Search() {
               <Empty
                 icon="compass"
                 title="Explore"
-                body="Type a keyword or a legislator's name, tap a topic, party, chamber, or status, or pick a hashtag to find bills."
+                body="Type a keyword or a legislator's name, tap a status, open Filters, or pick a hashtag to find bills."
               />
             </View>
           ) : results.isLoading ? (
@@ -168,7 +162,72 @@ export default function Search() {
         }
         ListFooterComponent={results.isFetchingNextPage ? <ActivityIndicator color={colors.blue} /> : null}
       />
+      <BottomSheet
+        visible={filtersOpen}
+        title="Filters"
+        onClose={() => setFiltersOpen(false)}
+        footer={
+          <View style={styles.sheetFooter}>
+            <Button
+              title="Clear all"
+              variant="secondary"
+              small
+              disabled={!filterCount}
+              onPress={() => {
+                setTag(null);
+                setParty(null);
+                setChamber(null);
+              }}
+            />
+            <Button title="Show bills" small onPress={() => setFiltersOpen(false)} style={{ flex: 1 }} />
+          </View>
+        }>
+        <View style={{ gap: space.lg }}>
+          <FilterSection title="Sponsor's party">
+            {PARTIES.map((code) => (
+              <Chip
+                key={code}
+                label={parties[code].label}
+                selected={party === code}
+                color={parties[code].soft}
+                onPress={() => setParty(party === code ? null : code)}
+              />
+            ))}
+          </FilterSection>
+          <FilterSection title="Chamber">
+            {CHAMBERS.map((c) => (
+              <Chip
+                key={c.key}
+                label={c.label}
+                selected={chamber === c.key}
+                color={colors.lilac}
+                onPress={() => setChamber(chamber === c.key ? null : c.key)}
+              />
+            ))}
+          </FilterSection>
+          <FilterSection title="Topic">
+            {tags?.map((t) => (
+              <Chip
+                key={t.name}
+                label={t.name}
+                selected={tag === t.name}
+                color={colors.mint}
+                onPress={() => setTag(tag === t.name ? null : t.name)}
+              />
+            ))}
+          </FilterSection>
+        </View>
+      </BottomSheet>
     </Screen>
+  );
+}
+
+function FilterSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <View style={{ gap: space.sm }}>
+      <Txt style={type.tiny}>{title.toUpperCase()}</Txt>
+      <View style={styles.wrap}>{children}</View>
+    </View>
   );
 }
 
@@ -176,14 +235,19 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: space.lg, paddingBottom: space.xxl, width: '100%', maxWidth: 520, alignSelf: 'center' },
   row: { gap: 8, paddingVertical: 4, paddingRight: 8 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  divider: { width: 2, alignSelf: 'stretch', marginVertical: 6, backgroundColor: colors.hairline, borderRadius: 1 },
-  activeHashtag: {
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  filterBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    alignSelf: 'flex-start',
-    backgroundColor: colors.yellow,
-    paddingVertical: 7,
-    paddingHorizontal: 14,
+    justifyContent: 'center',
+    gap: 6,
+    minWidth: 50,
+    height: 50,
+    paddingHorizontal: space.md,
+    backgroundColor: colors.surface,
   },
+  filterCount: { fontFamily: fonts.black, fontSize: 14 },
+  activeFilter: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12 },
+  activeFilterText: { fontFamily: fonts.extrabold, fontSize: 14, color: colors.ink },
+  sheetFooter: { flexDirection: 'row', gap: space.sm, marginTop: space.lg },
 });

@@ -5,7 +5,7 @@ import { ActivityIndicator, FlatList, Linking, StyleSheet, Text, View } from 're
 import { BillCard, PartyBadge } from '@/components/BillCard';
 import { DistrictMap } from '@/components/DistrictMap';
 import { LegislatorPhoto } from '@/components/LegislatorPhoto';
-import { BouncyPressable, Card, Empty, Icon, type IconName, Loading, Screen, TopBar, Txt } from '@/components/ui';
+import { BouncyPressable, Card, Chip, Empty, Icon, type IconName, Loading, Screen, TopBar, Txt } from '@/components/ui';
 import { legislatorPlace, ordinal } from '@/lib/format';
 import { useLegislator, useLegislatorBills, useStateMap } from '@/lib/queries';
 import type { Legislator, LegislatorRole, StateMap } from '@/lib/types';
@@ -17,9 +17,17 @@ const ROLES: { key: LegislatorRole; label: string }[] = [
   { key: 'cosponsored', label: 'Cosponsored' },
 ];
 
+type Tab = 'bills' | 'district' | 'about';
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'bills', label: 'Bills' },
+  { key: 'district', label: 'District' },
+  { key: 'about', label: 'About' },
+];
+
 export default function LegislatorPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data: legislator, isLoading, error } = useLegislator(id);
+  const [tab, setTab] = useState<Tab>('bills');
   const [role, setRole] = useState<LegislatorRole>('all');
   const bills = useLegislatorBills(id, role);
   const items = bills.data?.pages.flatMap((p) => p.items) ?? [];
@@ -39,10 +47,10 @@ export default function LegislatorPage() {
   return (
     <Screen padded={false}>
       <FlatList
-        data={items}
+        data={tab === 'bills' ? items : []}
         keyExtractor={(b) => b.id}
         contentContainerStyle={styles.list}
-        onEndReached={() => bills.hasNextPage && !bills.isFetchingNextPage && bills.fetchNextPage()}
+        onEndReached={() => tab === 'bills' && bills.hasNextPage && !bills.isFetchingNextPage && bills.fetchNextPage()}
         ListHeaderComponent={
           <View style={{ gap: space.lg, paddingBottom: space.lg }}>
             <TopBar title={legislator.name} />
@@ -61,23 +69,37 @@ export default function LegislatorPage() {
               <View style={styles.stats}>
                 <Stat n={legislator.sponsored_count} label="sponsored" />
                 <Stat n={legislator.cosponsored_count} label="cosponsored" />
+                <MiniMap legislator={legislator} onPress={() => setTab('district')} />
               </View>
             </View>
-            <AreaCard legislator={legislator} />
-            <OfficeCard legislator={legislator} />
-            <Txt style={[type.h2, { marginTop: space.sm }]}>Bills</Txt>
-            <View style={[styles.segment, sticker(2, radius.pill)]}>
-              {ROLES.map((r) => (
+            <View style={[styles.segment, sticker(2, radius.pill)]} accessibilityRole="tablist">
+              {TABS.map((t) => (
                 <BouncyPressable
-                  key={r.key}
-                  onPress={() => setRole(r.key)}
+                  key={t.key}
+                  onPress={() => setTab(t.key)}
                   accessibilityRole="tab"
-                  accessibilityState={{ selected: role === r.key }}
-                  style={[styles.segmentBtn, role === r.key && { backgroundColor: p.main }]}>
-                  <Text style={[styles.segmentText, role === r.key && { color: '#fff' }]}>{r.label}</Text>
+                  accessibilityState={{ selected: tab === t.key }}
+                  style={[styles.segmentBtn, tab === t.key && { backgroundColor: p.main }]}>
+                  <Text style={[styles.segmentText, tab === t.key && { color: '#fff' }]}>{t.label}</Text>
                 </BouncyPressable>
               ))}
             </View>
+            {tab === 'bills' ? (
+              <View style={styles.roles}>
+                {ROLES.map((r) => (
+                  <Chip
+                    key={r.key}
+                    small
+                    label={r.label}
+                    selected={role === r.key}
+                    color={p.soft}
+                    onPress={() => setRole(r.key)}
+                  />
+                ))}
+              </View>
+            ) : null}
+            {tab === 'district' ? <AreaCard legislator={legislator} /> : null}
+            {tab === 'about' ? <AboutCard legislator={legislator} /> : null}
           </View>
         }
         renderItem={({ item }) => (
@@ -92,15 +114,26 @@ export default function LegislatorPage() {
           </View>
         )}
         ListEmptyComponent={
-          bills.isLoading ? (
+          tab !== 'bills' ? null : bills.isLoading ? (
             <Loading label="Loading bills…" />
           ) : (
             <Empty icon="file-text" title="No bills yet" body="Nothing here among the bills PolitiKNOW has pulled in so far." />
           )
         }
-        ListFooterComponent={bills.isFetchingNextPage ? <ActivityIndicator color={colors.blue} /> : null}
+        ListFooterComponent={tab === 'bills' && bills.isFetchingNextPage ? <ActivityIndicator color={colors.blue} /> : null}
       />
     </Screen>
+  );
+}
+
+/** Thumbnail of the member's district in the header; tapping it opens the District tab. */
+function MiniMap({ legislator, onPress }: { legislator: Legislator; onPress: () => void }) {
+  const { data: map } = useStateMap(legislator.state);
+  if (!map) return null;
+  return (
+    <BouncyPressable onPress={onPress} accessibilityRole="button" accessibilityLabel="Show district map" style={styles.miniMap}>
+      <DistrictMap map={map} district={districtKey(legislator, map)} party={legislator.party} compact />
+    </BouncyPressable>
   );
 }
 
@@ -143,10 +176,12 @@ function AreaCard({ legislator }: { legislator: Legislator }) {
   );
 }
 
-function OfficeCard({ legislator: l }: { legislator: Legislator }) {
+function AboutCard({ legislator: l }: { legislator: Legislator }) {
   const thisYear = new Date().getFullYear();
   const phone = l.phone;
-  if (!l.career.length && !l.office_address && !l.phone) return null;
+  if (!l.career.length && !l.office_address && !l.phone) {
+    return <Empty icon="info" title="No details yet" body="Office and career details haven't been loaded for this member." />;
+  }
   return (
     <Card style={{ gap: space.md }}>
       {l.career.length ? (
@@ -201,7 +236,7 @@ function InfoRow({ icon, title, detail, link }: { icon: IconName; title: string;
 
 function Stat({ n, label }: { n: number; label: string }) {
   return (
-    <View style={{ alignItems: 'center', minWidth: 90 }}>
+    <View style={{ alignItems: 'center', minWidth: 80 }}>
       <Text style={styles.statN}>{n}</Text>
       <Text style={styles.statLabel}>{label.toUpperCase()}</Text>
     </View>
@@ -218,8 +253,8 @@ const styles = StyleSheet.create({
   heroMeta: { fontFamily: fonts.bold, color: 'rgba(255,255,255,0.92)', fontSize: 15 },
   stats: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: space.xl,
+    justifyContent: 'space-around',
+    alignItems: 'center',
     marginTop: space.md,
     paddingTop: space.md,
     borderTopWidth: 2,
@@ -234,5 +269,7 @@ const styles = StyleSheet.create({
   mapPlaceholder: { aspectRatio: 4 / 3, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt, borderRadius: radius.lg },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   infoIcon: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt },
+  roles: { flexDirection: 'row', gap: 6 },
+  miniMap: { width: 96 },
   roleTag: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6, marginLeft: 4 },
 });

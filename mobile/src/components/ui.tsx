@@ -259,10 +259,7 @@ export function Sheet({
   onClose: () => void;
 }) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={[styles.sheet, sticker(4)]} onPress={() => {}}>
-          <Txt style={[type.h3, { marginBottom: space.sm }]}>{title}</Txt>
+    <BottomSheet visible={visible} title={title} onClose={onClose}>
           {options.map((o) => (
             <BouncyPressable
               key={o.label}
@@ -275,6 +272,34 @@ export function Sheet({
             </BouncyPressable>
           ))}
           <Button title="Never mind" variant="secondary" onPress={onClose} style={{ marginTop: space.sm }} />
+    </BottomSheet>
+  );
+}
+
+/** A panel that slides over the bottom of the screen; tapping outside closes it. Scrolls when tall. */
+export function BottomSheet({
+  visible,
+  title,
+  onClose,
+  children,
+  footer,
+}: {
+  visible: boolean;
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  /** Pinned below the scrolling content, e.g. action buttons. */
+  footer?: ReactNode;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable style={[styles.sheet, sticker(4), { maxHeight: '85%' }]} onPress={() => {}}>
+          <Txt style={[type.h3, { marginBottom: space.sm }]}>{title}</Txt>
+          <ScrollView style={{ flexGrow: 0 }} keyboardShouldPersistTaps="handled">
+            {children}
+          </ScrollView>
+          {footer}
         </Pressable>
       </Pressable>
     </Modal>

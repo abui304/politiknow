@@ -1,7 +1,8 @@
 import uuid
-from typing import Literal
+from dataclasses import dataclass
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import case, exists, func, or_, select
 
 from app.config import settings
@@ -64,11 +65,58 @@ def _has_hashtag(condition):
     return exists(select(1).select_from(tags).where(condition(tags.c.value)))
 
 
+@dataclass
+class BillFilters:
+    """Search filters shared by /search and /stages (status is applied separately)."""
+
+    q: str | None = Query(None, max_length=200)
+    tag: str | None = None
+    hashtag: str | None = Query(None, max_length=60)
+    party: Literal["D", "R", "I"] | None = None
+    chamber: Literal["house", "senate"] | None = None
+
+    @property
+    def term(self) -> str:
+        return (self.q or "").strip().lstrip("#").strip()
+
+    def title_or_hashtag(self):
+        """Matches `term` in the title or a hashtag; these rank above name matches."""
+        pattern = like_pattern(self.term)
+        return or_(Bill.title.ilike(pattern, escape="\\"), _has_hashtag(lambda h: h.ilike(pattern, escape="\\")))
+
+    def conditions(self) -> list:
+        conds = [Bill.is_published.is_(True)]
+        if self.tag:
+            if self.tag not in POLICY_AREAS:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown tag")
+            conds.append(Bill.primary_tags.contains([self.tag]))
+        if self.hashtag and hashtags.clean(self.hashtag):
+            wanted = hashtags.clean(self.hashtag).lower()
+            conds.append(_has_hashtag(lambda h: func.lower(h) == wanted))
+        if self.party:
+            conds.append(Bill.sponsor_party.in_(PARTY_CODES[self.party]))
+        if self.chamber:
+            conds.append(Bill.bill_type.startswith("H" if self.chamber == "house" else "S"))
+        if self.term:
+            pattern = like_pattern(self.term)
+            named = select(Legislator.bioguide_id).where(name_matches(pattern))
+            conds.append(or_(
+                self.title_or_hashtag(),
+                Bill.sponsor_name.ilike(pattern, escape="\\"),
+                Bill.sponsor_id.in_(named),
+                Bill.id.in_(select(BillCosponsor.bill_id).where(BillCosponsor.bioguide_id.in_(named))),
+            ))
+        return conds
+
+
+Filters = Annotated[BillFilters, Depends()]
+
+
 @router.get("/stages", response_model=list[StageOut])
-async def stage_counts(db: DB, _: CurrentUser):
-    """How many published bills each status filter matches."""
+async def stage_counts(db: DB, _: CurrentUser, filters: Filters):
+    """How many published bills each status filter matches, within the other active filters."""
     row = (await db.execute(
-        select(*(func.count().filter(cond) for cond in STAGES.values())).where(Bill.is_published.is_(True))
+        select(*(func.count().filter(cond) for cond in STAGES.values())).where(*filters.conditions())
     )).one()
     return [StageOut(key=key, bill_count=n) for key, n in zip(STAGES, row, strict=True)]
 
@@ -83,11 +131,7 @@ async def get_feed(db: DB, redis: RedisDep, user: CurrentUser, cursor: int = 0, 
 async def search(
     db: DB,
     user: CurrentUser,
-    q: str | None = Query(None, max_length=200),
-    tag: str | None = None,
-    hashtag: str | None = Query(None, max_length=60),
-    party: Literal["D", "R", "I"] | None = None,
-    chamber: Literal["house", "senate"] | None = None,
+    filters: Filters,
     stage: Stage | None = None,
     cursor: int = 0,
     limit: int = Query(20, le=50),
@@ -95,33 +139,13 @@ async def search(
     """Filter by topic, hashtag (exact, case-insensitive), sponsor's party, chamber, and/or status, and/or
     match words in the title, any hashtag, or a sponsor's or cosponsor's name. Title and hashtag
     matches rank above name matches."""
-    stmt = select(Bill).where(Bill.is_published.is_(True))
-    if tag:
-        if tag not in POLICY_AREAS:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown tag")
-        stmt = stmt.where(Bill.primary_tags.contains([tag]))
-    if hashtag and hashtags.clean(hashtag):
-        wanted = hashtags.clean(hashtag).lower()
-        stmt = stmt.where(_has_hashtag(lambda h: func.lower(h) == wanted))
-    if party:
-        stmt = stmt.where(Bill.sponsor_party.in_(PARTY_CODES[party]))
-    if chamber:
-        stmt = stmt.where(Bill.bill_type.startswith("H" if chamber == "house" else "S"))
+    stmt = select(Bill).where(*filters.conditions())
     if stage:
         stmt = stmt.where(STAGES[stage])
-    term = (q or "").strip().lstrip("#").strip()
-    if term:
-        pattern = like_pattern(term)
-        about = or_(Bill.title.ilike(pattern, escape="\\"), _has_hashtag(lambda h: h.ilike(pattern, escape="\\")))
-        named = select(Legislator.bioguide_id).where(name_matches(pattern))
-        by_name = or_(
-            Bill.sponsor_name.ilike(pattern, escape="\\"),
-            Bill.sponsor_id.in_(named),
-            Bill.id.in_(select(BillCosponsor.bill_id).where(BillCosponsor.bioguide_id.in_(named))),
-        )
-        stmt = stmt.where(or_(about, by_name)).order_by(
-            case((about, 0), else_=1),
-            func.similarity(Bill.title, term).desc(),
+    if filters.term:
+        stmt = stmt.order_by(
+            case((filters.title_or_hashtag(), 0), else_=1),
+            func.similarity(Bill.title, filters.term).desc(),
             Bill.last_action_date.desc().nulls_last(),
         )
     else:

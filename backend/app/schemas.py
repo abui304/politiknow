@@ -130,7 +130,8 @@ class BillOut(BaseModel):
     primary_tags: list[str]
     sub_tags: list[str]
     sponsor_id: str | None
-    sponsor_name: str | None
+    sponsor_name: str | None  # Congress.gov's form: "Rep. Schrier, Kim [D-WA-8]"
+    sponsor_label: str | None = None  # display form: "Kim Schrier (D-WA-8)"
     sponsor_party: str | None
     cosponsor_count: int
     status: str

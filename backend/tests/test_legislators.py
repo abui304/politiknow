@@ -95,7 +95,10 @@ async def test_legislator_pages(client, db):
 
     r = await client.get(f"/bills/{insulin.id}/cosponsors", headers=h)
     assert [(c["name"], c["is_original"]) for c in r.json()] == [("Nancy Pelosi", True), ("Ted Cruz", False)]
-    assert (await client.get(f"/bills/{insulin.id}", headers=h)).json()["sponsor_id"] == "W000817"
+    body = (await client.get(f"/bills/{insulin.id}", headers=h)).json()
+    assert (body["sponsor_id"], body["sponsor_label"]) == ("W000817", "Elizabeth Warren (D-MA)")
+    r = await client.get("/legislators/P000197/bills", params={"role": "sponsored"}, headers=h)
+    assert r.json()["items"][0]["sponsor_label"] == "Nancy Pelosi (D-CA-11)"
 
 
 async def test_list_legislators(client, db):

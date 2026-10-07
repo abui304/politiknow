@@ -4,15 +4,35 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
-from app.models import Bill, Comment, CommentVote, User, Vote
+from app.models import Bill, Comment, CommentVote, Legislator, User, Vote
 from app.schemas import BillOut, CommentOut
+
+
+def sponsor_label(legislator: Legislator) -> str:
+    """ "Kim Schrier (D-WA-8)"; senators and at-large members get just the state, e.g. "(D-MA)"."""
+    seat = legislator.state or ""
+    if legislator.chamber == "house" and legislator.district:
+        seat += f"-{legislator.district}"
+    return f"{legislator.name} ({legislator.party or '?'}-{seat})" if seat else legislator.name
 
 
 async def bills_out(db: AsyncSession, user: User, bills: list[Bill]) -> list[BillOut]:
     votes = dict((await db.execute(
         select(Vote.bill_id, Vote.value).where(Vote.user_id == user.id, Vote.bill_id.in_([b.id for b in bills]))
     )).all())
-    return [BillOut.model_validate(b).model_copy(update={"my_vote": votes.get(b.id, 0)}) for b in bills]
+    sponsor_ids = {b.sponsor_id for b in bills if b.sponsor_id}
+    sponsors = {
+        m.bioguide_id: sponsor_label(m)
+        for m in await db.scalars(select(Legislator).where(Legislator.bioguide_id.in_(sponsor_ids)))
+    } if sponsor_ids else {}
+    return [
+        BillOut.model_validate(b).model_copy(update={
+            "my_vote": votes.get(b.id, 0),
+            # Bills whose sponsor isn't linked (e.g. demo data) keep Congress.gov's raw name.
+            "sponsor_label": sponsors.get(b.sponsor_id) or b.sponsor_name,
+        })
+        for b in bills
+    ]
 
 
 def visible_comments(viewer: User) -> ColumnElement[bool]:

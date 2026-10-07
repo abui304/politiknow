@@ -39,12 +39,12 @@ export default function BillDetail() {
   const p = partyColors(bill.sponsor_party);
   const summary = level === 'simple' ? bill.summary_simple : bill.summary_detailed;
   const sponsorId = bill.sponsor_id;
+  const sponsor = bill.sponsor_label ?? bill.sponsor_name;
   const openCongress = () => bill.congress_url && WebBrowser.openBrowserAsync(bill.congress_url);
 
   return (
     <Screen scroll>
       <TopBar
-        title={bill.label}
         right={
           <BouncyPressable onPress={() => shareBill(bill)} style={[styles.iconBtn, sticker(2, radius.pill)]} accessibilityLabel="Share">
             <Icon name="share" size={18} />
@@ -61,25 +61,21 @@ export default function BillDetail() {
         <Text style={styles.heroTitle}>{bill.title}</Text>
         <View style={styles.heroTimeline}>
           <BillTimeline bill={bill} onDark />
-          {bill.latest_action_text ? (
-            <Text style={styles.heroLatest} numberOfLines={3}>
-              Latest: {bill.latest_action_text}
-            </Text>
-          ) : null}
+          {bill.latest_action_text ? <LatestAction text={bill.latest_action_text} /> : null}
         </View>
         <View style={styles.heroMeta}>
-          {bill.sponsor_name ? (
+          {sponsor ? (
             sponsorId ? (
               <BouncyPressable
                 onPress={() => router.push({ pathname: '/legislator/[id]', params: { id: sponsorId } })}
                 accessibilityRole="link"
                 style={styles.heroLink}>
                 <Text style={styles.heroMetaText}>Sponsor: </Text>
-                <Text style={styles.heroLinkText}>{bill.sponsor_name}</Text>
+                <Text style={styles.heroLinkText}>{sponsor}</Text>
                 <Icon name="chevron-right" size={15} color="#fff" />
               </BouncyPressable>
             ) : (
-              <Text style={styles.heroMetaText}>Sponsor: {bill.sponsor_name}</Text>
+              <Text style={styles.heroMetaText}>Sponsor: {sponsor}</Text>
             )
           ) : null}
           {bill.cosponsor_count > 0 ? (
@@ -163,6 +159,25 @@ export default function BillDetail() {
   );
 }
 
+/** The bill's latest action, one line until tapped. */
+function LatestAction({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <BouncyPressable
+      onPress={() => setOpen((o) => !o)}
+      accessibilityRole="button"
+      accessibilityState={{ expanded: open }}
+      accessibilityLabel={`Latest action: ${text}`}
+      style={styles.latest}>
+      <Text style={styles.heroLatest} numberOfLines={open ? undefined : 1}>
+        <Text style={{ fontFamily: fonts.extrabold }}>Latest: </Text>
+        {text}
+      </Text>
+      <Icon name={open ? 'chevron-up' : 'chevron-down'} size={15} color="#fff" />
+    </BouncyPressable>
+  );
+}
+
 /** Hashtags fold into one small pill; tapping it shows them all. */
 function Hashtags({ tags }: { tags: string[] }) {
   const [open, setOpen] = useState(false);
@@ -228,7 +243,8 @@ const styles = StyleSheet.create({
   heroMeta: { gap: 4 },
   // Pulled out into the header's padding so six step labels fit on a phone.
   heroTimeline: { gap: space.sm, backgroundColor: 'rgba(0,0,0,0.12)', borderRadius: radius.md, padding: space.md, marginHorizontal: -space.sm },
-  heroLatest: { fontFamily: fonts.semibold, color: 'rgba(255,255,255,0.9)', fontSize: 13, lineHeight: 18 },
+  heroLatest: { flex: 1, fontFamily: fonts.semibold, color: 'rgba(255,255,255,0.9)', fontSize: 13, lineHeight: 18 },
+  latest: { flexDirection: 'row', alignItems: 'flex-start', gap: space.xs },
   heroMetaText: { fontFamily: fonts.bold, color: 'rgba(255,255,255,0.92)', fontSize: 14 },
   heroLink: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', flexWrap: 'wrap' },
   heroLinkText: { fontFamily: fonts.extrabold, color: '#fff', fontSize: 14, textDecorationLine: 'underline' },

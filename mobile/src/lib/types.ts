@@ -60,6 +60,7 @@ export type Bill = {
   sub_tags: string[];
   sponsor_id: string | null;
   sponsor_name: string | null;
+  sponsor_label: string | null; // "Kim Schrier (D-WA-8)"
   sponsor_party: string | null;
   cosponsor_count: number;
   status: string;
