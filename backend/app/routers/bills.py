@@ -8,7 +8,17 @@ from app.config import settings
 from app.deps import DB, CurrentUser, RedisDep
 from app.models import Bill, BillCosponsor, InteractionType, Legislator, SummaryReport, Vote
 from app.ratelimit import enforce_hourly_limit
-from app.schemas import BillOut, BillPage, BillText, HashtagOut, SummaryReportIn, TagOut, VoteIn, VoteOut
+from app.schemas import (
+    BillOut,
+    BillPage,
+    BillText,
+    HashtagOut,
+    StageOut,
+    SummaryReportIn,
+    TagOut,
+    VoteIn,
+    VoteOut,
+)
 from app.serializers import bills_out
 from app.services import feed as feed_service
 from app.services import hashtags, interactions
@@ -16,6 +26,18 @@ from app.services.legislators import PARTY_CODES, like_pattern, name_matches
 from app.taxonomy import POLICY_AREAS
 
 router = APIRouter(tags=["bills"])
+
+# Status filters for search. "Awaiting" means the bill passed its own chamber and the other
+# chamber's vote is next (simple resolutions never leave their chamber, so they're excluded).
+STAGES = {
+    "law": Bill.status == "became_law",
+    "president": Bill.status == "to_president",
+    "senate": Bill.bill_type.in_(("HR", "HJRES", "HCONRES")) & (Bill.status == "passed_house"),
+    "house": Bill.bill_type.in_(("S", "SJRES", "SCONRES")) & (Bill.status == "passed_senate"),
+    "committee": Bill.status == "in_committee",
+    "vetoed": Bill.status == "vetoed",
+}
+Stage = Literal["law", "president", "senate", "house", "committee", "vetoed"]
 
 
 async def _published_bill(db, bill_id: uuid.UUID) -> Bill:
@@ -42,6 +64,15 @@ def _has_hashtag(condition):
     return exists(select(1).select_from(tags).where(condition(tags.c.value)))
 
 
+@router.get("/stages", response_model=list[StageOut])
+async def stage_counts(db: DB, _: CurrentUser):
+    """How many published bills each status filter matches."""
+    row = (await db.execute(
+        select(*(func.count().filter(cond) for cond in STAGES.values())).where(Bill.is_published.is_(True))
+    )).one()
+    return [StageOut(key=key, bill_count=n) for key, n in zip(STAGES, row, strict=True)]
+
+
 @router.get("/feed", response_model=BillPage)
 async def get_feed(db: DB, redis: RedisDep, user: CurrentUser, cursor: int = 0, limit: int = Query(20, le=50)):
     bills, next_cursor = await feed_service.page(db, redis, user, cursor, limit)
@@ -57,10 +88,11 @@ async def search(
     hashtag: str | None = Query(None, max_length=60),
     party: Literal["D", "R", "I"] | None = None,
     chamber: Literal["house", "senate"] | None = None,
+    stage: Stage | None = None,
     cursor: int = 0,
     limit: int = Query(20, le=50),
 ):
-    """Filter by topic, hashtag (exact, case-insensitive), sponsor's party, and/or chamber, and/or
+    """Filter by topic, hashtag (exact, case-insensitive), sponsor's party, chamber, and/or status, and/or
     match words in the title, any hashtag, or a sponsor's or cosponsor's name. Title and hashtag
     matches rank above name matches."""
     stmt = select(Bill).where(Bill.is_published.is_(True))
@@ -75,6 +107,8 @@ async def search(
         stmt = stmt.where(Bill.sponsor_party.in_(PARTY_CODES[party]))
     if chamber:
         stmt = stmt.where(Bill.bill_type.startswith("H" if chamber == "house" else "S"))
+    if stage:
+        stmt = stmt.where(STAGES[stage])
     term = (q or "").strip().lstrip("#").strip()
     if term:
         pattern = like_pattern(term)

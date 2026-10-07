@@ -166,18 +166,20 @@ export function Chip({
   selected,
   onPress,
   color = colors.yellow,
+  small,
 }: {
   label: string;
   selected?: boolean;
   onPress?: () => void;
   color?: string;
+  small?: boolean;
 }) {
   const content = (
-    <Text style={[styles.chipText, selected && { fontFamily: fonts.extrabold }]} numberOfLines={1}>
+    <Text style={[styles.chipText, small && styles.chipTextSmall, selected && { fontFamily: fonts.extrabold }]} numberOfLines={1}>
       {label}
     </Text>
   );
-  const chipStyle = [styles.chip, selected && [{ backgroundColor: color }, sticker(2, radius.pill)]];
+  const chipStyle = [styles.chip, small && styles.chipSmall, selected && [{ backgroundColor: color }, sticker(2, radius.pill)]];
   if (!onPress) return <View style={chipStyle}>{content}</View>;
   return (
     <BouncyPressable onPress={onPress} accessibilityRole="button" accessibilityState={{ selected }} style={chipStyle}>
@@ -348,6 +350,8 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
   },
   chipText: { fontFamily: fonts.bold, fontSize: 13, color: colors.ink },
+  chipSmall: { paddingVertical: 4, paddingHorizontal: 9 },
+  chipTextSmall: { fontSize: 12 },
   input: {
     backgroundColor: colors.surface,
     paddingHorizontal: space.lg,

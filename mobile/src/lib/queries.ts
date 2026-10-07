@@ -23,6 +23,8 @@ import type {
   NotificationPrefs,
   PartyFilter,
   Profile,
+  StageCount,
+  StageFilter,
   StateMap,
   Tag,
 } from './types';
@@ -33,6 +35,7 @@ export type SearchFilters = {
   hashtag: string | null;
   party: PartyFilter | null;
   chamber: Chamber | null;
+  stage: StageFilter | null;
 };
 
 export const keys = {
@@ -41,6 +44,7 @@ export const keys = {
   feed: ['feed'] as const,
   search: (f: SearchFilters) => ['search', f] as const,
   hashtags: ['hashtags'] as const,
+  stages: ['stages'] as const,
   bill: (id: string) => ['bill', id] as const,
   cosponsors: (billId: string) => ['bill', billId, 'cosponsors'] as const,
   legislators: (q: string, party: PartyFilter | null, chamber: Chamber | null) =>
@@ -122,6 +126,9 @@ export const useBillCosponsors = (billId: string) =>
 
 export const usePopularHashtags = () =>
   useQuery({ queryKey: keys.hashtags, queryFn: () => api<Hashtag[]>('/hashtags?limit=24'), staleTime: 5 * 60_000 });
+
+export const useStageCounts = () =>
+  useQuery({ queryKey: keys.stages, queryFn: () => api<StageCount[]>('/stages'), staleTime: 5 * 60_000 });
 
 export const useBill = (id: string) =>
   useQuery({ queryKey: keys.bill(id), queryFn: () => api<Bill>(`/bills/${id}`) });

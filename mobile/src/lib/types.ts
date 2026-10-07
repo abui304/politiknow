@@ -117,6 +117,11 @@ export type Cosponsor = LegislatorBase & { is_original: boolean; sponsorship_dat
 /** Search filter values; Independent also matches "ID" (Independent Democrat). */
 export type PartyFilter = 'D' | 'R' | 'I';
 
+/** /search?stage= values; "senate" = passed the House, Senate vote next (and vice versa). */
+export type StageFilter = 'law' | 'president' | 'senate' | 'house' | 'committee' | 'vetoed';
+
+export type StageCount = { key: StageFilter; bill_count: number };
+
 export type LegislatorRole = 'all' | 'sponsored' | 'cosponsored';
 
 export type Comment = {

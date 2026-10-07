@@ -5,8 +5,8 @@ import { ActivityIndicator, FlatList, ScrollView, StyleSheet, View } from 'react
 import { BillCard } from '@/components/BillCard';
 import { LegislatorRow } from '@/components/LegislatorRow';
 import { BouncyPressable, Chip, Empty, Field, Icon, Loading, Screen, Txt } from '@/components/ui';
-import { useLegislators, usePopularHashtags, useSearch, useTags } from '@/lib/queries';
-import type { Chamber, PartyFilter } from '@/lib/types';
+import { useLegislators, usePopularHashtags, useSearch, useStageCounts, useTags } from '@/lib/queries';
+import type { Chamber, PartyFilter, StageFilter } from '@/lib/types';
 import { colors, party as parties, radius, space, sticker, type } from '@/theme';
 
 const PARTIES: PartyFilter[] = ['D', 'R', 'I'];
@@ -14,6 +14,14 @@ const CHAMBERS: { key: Chamber; label: string }[] = [
   { key: 'house', label: 'House' },
   { key: 'senate', label: 'Senate' },
 ];
+const STAGES: Record<StageFilter, string> = {
+  law: 'Became law',
+  president: 'President’s desk',
+  senate: 'Awaiting Senate',
+  house: 'Awaiting House',
+  committee: 'In committee',
+  vetoed: 'Vetoed',
+};
 
 function useDebounced<T>(value: T, ms = 350) {
   const [v, setV] = useState(value);
@@ -31,6 +39,7 @@ export default function Search() {
   const [tag, setTag] = useState<string | null>(null);
   const [party, setParty] = useState<PartyFilter | null>(null);
   const [chamber, setChamber] = useState<Chamber | null>(null);
+  const [stage, setStage] = useState<StageFilter | null>(null);
   // The hashtag filter lives in the URL so tapping a hashtag anywhere opens /search?hashtag=...
   const hashtag = useLocalSearchParams<{ hashtag?: string }>().hashtag || null;
   const setHashtag = (h: string | null) => router.setParams({ hashtag: h ?? undefined });
@@ -38,10 +47,11 @@ export default function Search() {
   const q = useDebounced(text.trim());
   const { data: tags } = useTags();
   const { data: popular } = usePopularHashtags();
-  const results = useSearch({ q, tag, hashtag, party, chamber });
+  const { data: stageCounts } = useStageCounts();
+  const results = useSearch({ q, tag, hashtag, party, chamber, stage });
   const { data: legislators } = useLegislators(q.startsWith('#') ? '' : q, party, chamber);
   const bills = results.data?.pages.flatMap((p) => p.items) ?? [];
-  const searching = Boolean(q || tag || hashtag || party || chamber);
+  const searching = Boolean(q || tag || hashtag || party || chamber || stage);
 
   return (
     <Screen padded={false}>
@@ -103,6 +113,19 @@ export default function Search() {
                 />
               ))}
             </ScrollView>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+              {stageCounts
+                ?.filter((s) => s.bill_count > 0 || stage === s.key)
+                .map((s) => (
+                  <Chip
+                    key={s.key}
+                    label={`${STAGES[s.key]} · ${s.bill_count}`}
+                    selected={stage === s.key}
+                    color={colors.yellow}
+                    onPress={() => setStage(stage === s.key ? null : s.key)}
+                  />
+                ))}
+            </ScrollView>
             {q && legislators?.length ? (
               <View style={{ gap: space.sm }}>
                 <Txt style={type.h3}>Legislators</Txt>
@@ -134,13 +157,13 @@ export default function Search() {
               <Empty
                 icon="compass"
                 title="Explore"
-                body="Type a keyword or a legislator's name, tap a topic, party, or chamber, or pick a hashtag to find bills."
+                body="Type a keyword or a legislator's name, tap a topic, party, chamber, or status, or pick a hashtag to find bills."
               />
             </View>
           ) : results.isLoading ? (
             <Loading label="Searching…" />
           ) : (
-            <Empty icon="search" title="Nothing found" body="Try a different word, name, topic, or hashtag." />
+            <Empty icon="search" title="Nothing found" body="Try a different word, name, topic, status, or hashtag." />
           )
         }
         ListFooterComponent={results.isFetchingNextPage ? <ActivityIndicator color={colors.blue} /> : null}

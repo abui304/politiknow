@@ -264,3 +264,8 @@ class TagOut(BaseModel):
 class HashtagOut(BaseModel):
     name: str
     bill_count: int
+
+
+class StageOut(BaseModel):
+    key: str  # a /search?stage= value
+    bill_count: int

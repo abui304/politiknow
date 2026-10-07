@@ -35,7 +35,7 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
 ### Bill pages
 - **Simple** (about 150–250 words, no jargon) and **Detailed** (about 400–600 words) AI summaries, switchable with a toggle.
 - A persistent notice that the summary is AI-generated; tapping it shows the **full bill text** in the app (the first 20,000 characters, with the rest on Congress.gov).
-- The bill's **timeline** with dates, its latest action, sponsor, topics, and **#hashtags**. Resolutions show their shorter path (a simple resolution only needs its own chamber; concurrent resolutions skip the President), and a vetoed bill ends in Vetoed.
+- The bill's **timeline** with dates, its latest action, sponsor, topics, and **#hashtags** (folded into a small "Hashtags (N)" pill; tap to show them). Resolutions show their shorter path (a simple resolution only needs its own chamber; concurrent resolutions skip the President), and a vetoed bill ends in Vetoed.
 - **Tap the sponsor** to open their legislator page, or tap **Cosponsors (N)** to see every current cosponsor (original cosponsors first), each linking to their own page.
 - Link to the official Congress.gov page, and a **Report inaccuracy** button with an optional note.
 - Up/down voting and sharing (the phone's share sheet; on web, the browser's share menu or copy to clipboard).
@@ -48,7 +48,9 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
 
 ### Search and hashtags
 - Search bill **titles, hashtags, and legislator names** by keyword. A name finds every bill that member sponsored or cosponsored, and matching legislators are listed above the bills.
-- Filter by **topic**, the sponsor's **party** (Democrat, Republican, Independent), and **chamber** (House, Senate).
+- Filter by **topic**, the sponsor's **party** (Democrat, Republican, Independent), **chamber** (House, Senate), and **status**, each showing how many bills match:
+  - **Became law**, **President's desk**, **In committee**, **Vetoed**
+  - **Awaiting Senate:** House bills that passed the House, with the Senate vote next (and **Awaiting House** the other way around). Simple resolutions never leave their own chamber, so they don't count.
 - **Tap any #hashtag** on a bill to see every bill that shares it.
 - With nothing typed, Search shows **Popular hashtags** with how many bills use each.
 - New bills reuse existing hashtags where they fit (spelling variants merged, generic words like "Congress" dropped), so hashtags actually connect bills.

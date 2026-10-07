@@ -106,10 +106,8 @@ export default function BillDetail() {
         {bill.primary_tags.map((t) => (
           <Chip key={t} label={t} selected color={p.soft} />
         ))}
-        {bill.sub_tags.map((t) => (
-          <Chip key={t} label={`#${t}`} onPress={() => router.push({ pathname: '/search', params: { hashtag: t } })} />
-        ))}
       </View>
+      <Hashtags tags={bill.sub_tags} />
 
       <Card style={{ gap: space.md, marginTop: space.lg }}>
         <View style={[styles.segment, sticker(2, radius.pill)]}>
@@ -165,6 +163,30 @@ export default function BillDetail() {
   );
 }
 
+/** Hashtags fold into one small pill; tapping it shows them all. */
+function Hashtags({ tags }: { tags: string[] }) {
+  const [open, setOpen] = useState(false);
+  if (!tags.length) return null;
+  return (
+    <View style={styles.hashtags}>
+      <BouncyPressable
+        onPress={() => setOpen((o) => !o)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        style={styles.hashtagToggle}>
+        <Icon name="hash" size={13} color={colors.inkSoft} />
+        <Txt style={styles.hashtagToggleText}>Hashtags ({tags.length})</Txt>
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={14} color={colors.inkSoft} />
+      </BouncyPressable>
+      {open
+        ? tags.map((t) => (
+            <Chip key={t} small label={`#${t}`} onPress={() => router.push({ pathname: '/search', params: { hashtag: t } })} />
+          ))
+        : null}
+    </View>
+  );
+}
+
 function ReportSummary({ billId }: { billId: string }) {
   const [open, setOpen] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -204,13 +226,27 @@ const styles = StyleSheet.create({
   heroLabel: { fontFamily: fonts.black, color: '#fff', fontSize: 16, flex: 1 },
   heroTitle: { fontFamily: fonts.black, color: '#fff', fontSize: 22, lineHeight: 28 },
   heroMeta: { gap: 4 },
-  heroTimeline: { gap: space.sm, backgroundColor: 'rgba(0,0,0,0.12)', borderRadius: radius.md, padding: space.md },
+  // Pulled out into the header's padding so six step labels fit on a phone.
+  heroTimeline: { gap: space.sm, backgroundColor: 'rgba(0,0,0,0.12)', borderRadius: radius.md, padding: space.md, marginHorizontal: -space.sm },
   heroLatest: { fontFamily: fonts.semibold, color: 'rgba(255,255,255,0.9)', fontSize: 13, lineHeight: 18 },
   heroMetaText: { fontFamily: fonts.bold, color: 'rgba(255,255,255,0.92)', fontSize: 14 },
   heroLink: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', flexWrap: 'wrap' },
   heroLinkText: { fontFamily: fonts.extrabold, color: '#fff', fontSize: 14, textDecorationLine: 'underline' },
   heroFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 2, borderTopColor: 'rgba(255,255,255,0.35)', paddingTop: space.sm },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: space.lg },
+  hashtags: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 5, marginTop: space.sm },
+  hashtagToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 9,
+    borderRadius: radius.pill,
+    borderWidth: 2,
+    borderColor: colors.hairline,
+    backgroundColor: colors.surface,
+  },
+  hashtagToggleText: { fontFamily: fonts.bold, fontSize: 12, color: colors.inkSoft },
   segment: { flexDirection: 'row', backgroundColor: colors.surfaceAlt, padding: 3 },
   segmentBtn: { flex: 1, paddingVertical: 8, borderRadius: radius.pill, alignItems: 'center' },
   segmentText: { fontFamily: fonts.extrabold, fontSize: 14, color: colors.ink },

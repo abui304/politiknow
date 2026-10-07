@@ -57,3 +57,32 @@ async def test_bill_api_includes_timeline(client, db):
     steps = (await client.get(f"/bills/{bill.id}", headers=h)).json()["timeline"]
     assert [(s["short"], s["date"], s["reached"]) for s in steps[:3]] == [
         ("Intro", "2026-01-05", True), ("Committee", "2026-01-06", True), ("House", None, False)]
+
+
+async def test_search_by_status(client, db):
+    law = await make_bill(db, title="Signed Act")
+    law.status = "became_law"
+    to_senate = await make_bill(db, title="House Passed Act")
+    to_senate.status = "passed_house"
+    adopted = await make_bill(db, title="House Resolution", bill_type="HRES")
+    adopted.status = "passed_house"  # agreed to; never goes to the Senate
+    to_house = await make_bill(db, title="Senate Passed Act", bill_type="S")
+    to_house.status = "passed_senate"
+    stuck = await make_bill(db, title="Committee Act")
+    stuck.status = "in_committee"
+    await db.commit()
+    h = await signup(client)
+
+    async def titles(stage, **params):
+        r = await client.get("/search", params={"stage": stage, **params}, headers=h)
+        return [b["title"] for b in r.json()["items"]]
+
+    assert await titles("law") == ["Signed Act"]
+    assert await titles("senate") == ["House Passed Act"]
+    assert await titles("house") == ["Senate Passed Act"]
+    assert await titles("committee") == ["Committee Act"]
+    assert await titles("committee", party="R") == []
+    assert (await client.get("/search", params={"stage": "nope"}, headers=h)).status_code == 422
+
+    counts = {s["key"]: s["bill_count"] for s in (await client.get("/stages", headers=h)).json()}
+    assert counts == {"law": 1, "president": 0, "senate": 1, "house": 1, "committee": 1, "vetoed": 0}
