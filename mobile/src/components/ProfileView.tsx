@@ -32,7 +32,7 @@ export function ProfileView({ userId, name, followers, following, joined, action
           {top}
           <Card style={{ alignItems: 'center', gap: space.sm, backgroundColor: colors.surfaceAlt }} offset={4}>
             <Avatar name={name} size={84} />
-            <Txt style={[type.title, { marginTop: space.sm }]}>@{name}</Txt>
+            <Txt style={[type.title, { marginTop: space.md }]}>@{name}</Txt>
             <Txt style={type.small}>Joined {shortDate(joined)}</Txt>
             <View style={styles.stats}>
               <Stat n={followers} label="followers" />

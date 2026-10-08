@@ -47,7 +47,8 @@ export const fonts = {
 };
 
 export const type: Record<string, TextStyle> = {
-  title: { fontFamily: fonts.black, fontSize: 28, color: colors.ink, letterSpacing: -0.3 },
+  // Explicit lineHeight: without one, Nunito Black's tallest glyphs (e.g. "@") draw above the box on phones.
+  title: { fontFamily: fonts.black, fontSize: 28, lineHeight: 36, color: colors.ink, letterSpacing: -0.3 },
   h2: { fontFamily: fonts.extrabold, fontSize: 20, color: colors.ink },
   h3: { fontFamily: fonts.extrabold, fontSize: 16, color: colors.ink },
   body: { fontFamily: fonts.regular, fontSize: 15, lineHeight: 22, color: colors.ink },
