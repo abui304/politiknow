@@ -1,11 +1,18 @@
 import { Image } from 'expo-image';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { BillCard } from '@/components/BillCard';
-import { Button, Empty, Loading, Screen, Txt } from '@/components/ui';
+import { BouncyPressable, Button, Empty, Icon, Loading, Screen, Segmented, Txt } from '@/components/ui';
 import { useFeed, useMe } from '@/lib/queries';
-import { colors, space, type } from '@/theme';
+import type { FeedSort } from '@/lib/types';
+import { colors, radius, space, sticker, type } from '@/theme';
+
+const SORTS: { key: FeedSort; label: string; icon: 'star' | 'message-circle' }[] = [
+  { key: 'for_you', label: 'For you', icon: 'star' },
+  { key: 'discussed', label: 'Most discussed', icon: 'message-circle' },
+];
 
 function greeting() {
   const h = new Date().getHours();
@@ -13,7 +20,8 @@ function greeting() {
 }
 
 export default function Feed() {
-  const feed = useFeed();
+  const [sort, setSort] = useState<FeedSort>('for_you');
+  const feed = useFeed(sort);
   const { data: me } = useMe();
   const [refreshing, setRefreshing] = useState(false);
   const bills = feed.data?.pages.flatMap((p) => p.items) ?? [];
@@ -37,11 +45,23 @@ export default function Feed() {
         ListHeaderComponent={
           <View style={styles.header}>
             <Image source={require('@/assets/images/logo.png')} style={styles.logo} contentFit="contain" />
-            <Txt style={[type.h2, { marginTop: space.md }]}>
+            <Txt style={type.h2}>
               {greeting()}
               {me?.display_name ? `, ${me.display_name}` : ''}!
             </Txt>
-            <Txt style={[type.small, { marginTop: 2 }]}>Here’s what Congress is up to.</Txt>
+            <Txt style={[type.small, { marginTop: -space.md + 2 }]}>Here’s what Congress is up to.</Txt>
+            <BouncyPressable
+              onPress={() => router.push('/calendar')}
+              accessibilityRole="link"
+              style={[styles.calendar, sticker(2, radius.md)]}>
+              <Icon name="calendar" size={18} />
+              <View style={{ flex: 1 }}>
+                <Txt style={type.bodyBold}>This week on the floor</Txt>
+                <Txt style={type.small}>What the House and Senate plan to vote on</Txt>
+              </View>
+              <Icon name="chevron-right" size={18} color={colors.inkSoft} />
+            </BouncyPressable>
+            <Segmented options={SORTS} value={sort} onChange={setSort} />
           </View>
         }
         ListEmptyComponent={
@@ -54,6 +74,8 @@ export default function Feed() {
               body={feed.error.message}
               action={<Button title="Try again" small onPress={() => feed.refetch()} />}
             />
+          ) : sort === 'discussed' ? (
+            <Empty icon="message-circle" title="No discussions yet" body="Bills people are talking about show up here." />
           ) : (
             <Empty icon="inbox" title="No bills yet" body="New bills show up here after the next ingestion run." />
           )
@@ -72,6 +94,7 @@ export default function Feed() {
 
 const styles = StyleSheet.create({
   list: { paddingHorizontal: space.lg, paddingBottom: space.xxl, width: '100%', maxWidth: 520, alignSelf: 'center' },
-  header: { paddingTop: space.md, paddingBottom: space.xl },
+  header: { paddingTop: space.md, paddingBottom: space.xl, gap: space.md },
+  calendar: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, backgroundColor: colors.surface },
   logo: { width: 150, height: 28 },
 });

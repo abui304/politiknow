@@ -7,7 +7,7 @@ export type Tokens = {
   needs_onboarding: boolean;
 };
 
-export type NotificationType = 'new_bill' | 'status_update' | 'trending' | 'social';
+export type NotificationType = 'new_bill' | 'status_update' | 'trending' | 'social' | 'legislator';
 
 export type NotificationPrefs = {
   types: Record<NotificationType, boolean>;
@@ -26,6 +26,9 @@ export type Me = {
   email_verified: boolean;
   follower_count: number;
   following_count: number;
+  /** Private: the user's own district (0 = at-large or delegate). */
+  home_state: string | null;
+  home_district: number | null;
   created_at: string;
 };
 
@@ -73,13 +76,18 @@ export type Bill = {
   introduced_date: string | null;
   last_action_date: string | null;
   my_vote: -1 | 0 | 1;
+  is_following: boolean;
+  /** Feed only: why it's in your feed, e.g. "Because you follow Health". */
+  reason: string | null;
+  /** Search only: where the search words appear, matches wrapped in \u0002…\u0003. */
+  snippet: string | null;
 };
 
 export type BillPage = { items: Bill[]; next_cursor: number | null };
 
 export type Chamber = 'house' | 'senate';
 
-type LegislatorBase = {
+export type LegislatorBase = {
   bioguide_id: string;
   name: string;
   full_name: string;
@@ -93,6 +101,8 @@ type LegislatorBase = {
 export type CareerSpan = { chamber: Chamber; start: number | null; end: number | null };
 
 export type Legislator = LegislatorBase & {
+  in_office: boolean;
+  is_following: boolean;
   state_name: string | null;
   image_credit: string | null;
   career: CareerSpan[];
@@ -112,6 +122,45 @@ export type StateMap = {
   districts: Record<string, { path: string; bbox: [number, number, number, number] }>;
   cities: { name: string; x: number; y: number; pop: number; district: string | null }[];
 };
+
+/** /maps/US: every state and district in one Albers USA layout (Alaska, Hawaii, Puerto Rico inset). */
+export type NationalMap = {
+  width: number;
+  height: number;
+  /** label: where the state's code goes; tag: for small states, a callout off the coast instead. */
+  states: Record<string, { name: string; path: string; label: [number, number]; tag: [number, number] | null }>;
+  /** Keyed "WA-8"; 0 is an at-large seat or delegate. */
+  districts: Record<string, string>;
+};
+
+export type District = {
+  state: string;
+  district: number;
+  label: string; // "WA-8", "WY-AL"
+  name: string; // "Washington's 8th District"
+  representative: LegislatorBase | null;
+  is_home: boolean;
+  is_following: boolean;
+};
+
+export type StateDistricts = { state: string; name: string; senators: LegislatorBase[]; districts: District[] };
+
+export type Representatives = { home: District | null; senators: LegislatorBase[] };
+
+export type Following = { legislators: LegislatorBase[]; bills: Bill[] };
+
+export type FloorItem = {
+  chamber: Chamber;
+  day: string | null; // YYYY-MM-DD; null = sometime this week (House)
+  heading: string;
+  text: string;
+  bills: { label: string; bill_id: string | null }[];
+};
+
+export type FloorWeek = { week_of: string; house: FloorItem[]; senate: FloorItem[]; house_url: string; senate_url: string };
+
+export type FeedSort = 'for_you' | 'discussed';
+export type CommentSort = 'top' | 'new';
 
 export type Cosponsor = LegislatorBase & { is_original: boolean; sponsorship_date: string | null };
 

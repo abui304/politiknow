@@ -1,6 +1,7 @@
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import func, select
@@ -39,11 +40,12 @@ async def _recount(db, bill: Bill) -> None:
 
 
 @router.get("/bills/{bill_id}/comments", response_model=list[CommentOut])
-async def list_comments(bill_id: uuid.UUID, db: DB, user: CurrentUser):
+async def list_comments(bill_id: uuid.UUID, db: DB, user: CurrentUser, sort: Literal["top", "new"] = "top"):
+    """Top-level comments, highest score first ("top") or newest first ("new"); replies stay oldest first."""
     await _published_bill(db, bill_id)
+    order = (Comment.net_score.desc(), Comment.created_at.desc()) if sort == "top" else (Comment.created_at.desc(),)
     comments = list(await db.scalars(
-        select(Comment).where(Comment.bill_id == bill_id, visible_comments(user))
-        .order_by(Comment.net_score.desc(), Comment.created_at.desc())
+        select(Comment).where(Comment.bill_id == bill_id, visible_comments(user)).order_by(*order)
     ))
     outs = await comments_out(db, user, comments)
     top = [c for c in outs if c.parent_comment_id is None]

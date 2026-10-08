@@ -7,6 +7,7 @@
   python -m app.cli backfill-cosponsors  # fetch sponsor + cosponsor details for existing bills (free)
   python -m app.cli backfill-timelines   # build every bill's timeline from its actions (free)
   python -m app.cli sync-members  # refresh every legislator's photo, career, and office (free)
+  python -m app.cli sync-roster   # mark who's serving now, adding members with no bills yet (free)
   python -m app.cli build-maps    # rebuild app/data/maps from Census boundaries (free; dev requirements)
 """
 
@@ -166,6 +167,8 @@ async def main(cmd: str) -> None:
     if cmd == "build-maps":
         from app.services import district_maps
         print(f"Wrote {district_maps.build()} state maps to {district_maps.MAPS_DIR}")
+        district_maps.build_national()
+        print(f"Wrote the national map and {district_maps.BOUNDS_FILE.name}")
         return
     sessions = worker_sessionmaker()
     async with sessions() as db:
@@ -186,13 +189,16 @@ async def main(cmd: str) -> None:
             await backfill_cosponsors(db)
         elif cmd == "backfill-timelines":
             await backfill_timelines(db)
-        elif cmd == "sync-members":
+        elif cmd in ("sync-members", "sync-roster"):
             from app.services import legislators
             from app.services.congress import CongressClient
 
             api = CongressClient()
             try:
-                print(f"Updated {await legislators.sync_members(db, api)} legislators.")
+                if cmd == "sync-roster":
+                    print(f"{await legislators.sync_roster(db, api)} members serving now.")
+                else:
+                    print(f"Updated {await legislators.sync_members(db, api)} legislators.")
             finally:
                 await api.close()
         else:

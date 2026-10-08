@@ -15,6 +15,7 @@ const ICONS: Record<NotificationType, { icon: IconName; bg: string }> = {
   status_update: { icon: 'activity', bg: '#FFF3D6' },
   trending: { icon: 'trending-up', bg: '#FFE6E6' },
   social: { icon: 'message-circle', bg: '#DDF8EC' },
+  legislator: { icon: 'user-check', bg: '#EFEAFF' },
 };
 
 export default function Notifications() {

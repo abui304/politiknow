@@ -81,6 +81,19 @@ class CongressClient:
             if not page or len(actions) >= data.get("pagination", {}).get("count", 0):
                 return actions
 
+    async def current_members(self, congress: int) -> list[dict]:
+        """Everyone serving now in this Congress (senators, representatives, and delegates)."""
+        members: list[dict] = []
+        while True:
+            data = await self._get(
+                f"{BASE}/member/congress/{congress}",
+                {"currentMember": "true", "offset": len(members), "limit": 250},
+            )
+            page = data.get("members") or []
+            members.extend(page)
+            if not page or len(members) >= data.get("pagination", {}).get("count", 0):
+                return members
+
     async def member(self, bioguide_id: str) -> dict:
         data = await self._get(f"{BASE}/member/{bioguide_id}")
         return data["member"]

@@ -81,6 +81,8 @@ export default function RootLayout() {
                 <Stack.Screen name="legislator/[id]" />
                 <Stack.Screen name="user/[id]" />
                 <Stack.Screen name="settings" />
+                <Stack.Screen name="calendar" />
+                <Stack.Screen name="state/[code]" />
               </Stack.Protected>
             </Stack>
             <Toaster />

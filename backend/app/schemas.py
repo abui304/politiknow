@@ -53,8 +53,8 @@ class QuietHours(BaseModel):
 
 
 class NotificationPrefs(BaseModel):
-    types: dict[Literal["new_bill", "status_update", "trending", "social"], bool] = {
-        "new_bill": True, "status_update": True, "trending": True, "social": True,
+    types: dict[Literal["new_bill", "status_update", "trending", "social", "legislator"], bool] = {
+        "new_bill": True, "status_update": True, "trending": True, "social": True, "legislator": True,
     }
     tags: list[str] | None = None  # None = use the user's tag preferences
     quiet_hours: QuietHours | None = None
@@ -76,6 +76,9 @@ class MeOut(BaseModel):
     email_verified: bool
     follower_count: int
     following_count: int
+    # Private to the user: their district, from their location or picked on the map.
+    home_state: str | None
+    home_district: int | None
     created_at: datetime
 
 
@@ -144,6 +147,11 @@ class BillOut(BaseModel):
     introduced_date: date | None
     last_action_date: datetime | None
     my_vote: int = 0
+    is_following: bool = False
+    # Feed only: why the bill is in your feed, e.g. "Because you follow Health".
+    reason: str | None = None
+    # Search only: a passage matching the search words, with matches wrapped in \u0002...\u0003.
+    snippet: str | None = None
 
 
 class BillPage(BaseModel):
@@ -191,6 +199,8 @@ class CareerSpan(BaseModel):
 
 
 class LegislatorOut(LegislatorBase):
+    in_office: bool
+    is_following: bool = False
     state_name: str | None
     image_credit: str | None
     career: list[CareerSpan]
@@ -200,9 +210,73 @@ class LegislatorOut(LegislatorBase):
     cosponsored_count: int
 
 
+class FollowingOut(BaseModel):
+    legislators: list[LegislatorBase]
+    bills: list[BillOut]
+
+
 class CosponsorOut(LegislatorBase):
     is_original: bool
     sponsorship_date: date | None
+
+
+# ---------- places (districts, representatives) ----------
+
+class LocationIn(BaseModel):
+    """Used once to find the user's district, then discarded: never stored or logged."""
+
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+
+class HomeIn(BaseModel):
+    state: str = Field(min_length=2, max_length=2)
+    district: int = Field(ge=0, le=60)
+
+
+class DistrictOut(BaseModel):
+    state: str
+    district: int  # 0 = at-large seat or delegate
+    label: str  # "WA-8", "WY-AL"
+    name: str  # "Washington's 8th District"
+    representative: LegislatorBase | None  # None while the seat is vacant (or the roster isn't synced)
+    is_home: bool
+    is_following: bool
+
+
+class StateDistrictsOut(BaseModel):
+    state: str
+    name: str
+    senators: list[LegislatorBase]
+    districts: list[DistrictOut]
+
+
+class RepresentativesOut(BaseModel):
+    home: DistrictOut | None
+    senators: list[LegislatorBase]
+
+
+# ---------- floor calendar ----------
+
+class FloorBill(BaseModel):
+    label: str  # "H.R. 2066"
+    bill_id: uuid.UUID | None  # when PolitiKNOW has the bill
+
+
+class FloorItem(BaseModel):
+    chamber: Literal["house", "senate"]
+    day: date | None  # None: the House lists bills for the whole week
+    heading: str  # the House's category, e.g. "Under suspension of the rules"; the Senate's meeting
+    text: str
+    bills: list[FloorBill]
+
+
+class FloorWeek(BaseModel):
+    week_of: date
+    house: list[FloorItem]
+    senate: list[FloorItem]
+    house_url: str
+    senate_url: str
 
 
 # ---------- comments ----------

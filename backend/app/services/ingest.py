@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import timeline
 from app.config import settings
-from app.models import Bill, IngestState
+from app.models import Bill, BillCosponsor, IngestState
 from app.services import hashtags, legislators, llm, notify
 from app.services.congress import CongressClient
 
@@ -21,6 +21,8 @@ WINDOW_FROM = "window_from"
 WINDOW_TO = "window_to"
 WINDOW_OFFSET = "window_offset"
 LAST_DONE = "caught_up_through"  # everything updated before this has been ingested
+ROSTER_SYNCED = "roster_synced_at"
+ROSTER_REFRESH = timedelta(days=7)
 # Congress.gov's order among same-day updates can shift slightly between requests, so a resumed
 # run re-reads a few bills before its saved position. Re-reads are cheap: unchanged text is never
 # re-summarized.
@@ -72,7 +74,7 @@ async def ingest_bill(
         bill = Bill(congress_number=congress, bill_type=bill_type, bill_number=number)
         db.add(bill)
     bill.title = detail.get("title") or bill.title or f"{bill_type} {number}"
-    await legislators.sync_bill(db, api, bill, detail)
+    new_cosponsors = await legislators.sync_bill(db, api, bill, detail)
     bill.congress_url = detail.get("legislationUrl")
     if detail.get("introducedDate"):
         bill.introduced_date = date.fromisoformat(detail["introducedDate"])
@@ -109,6 +111,12 @@ async def ingest_bill(
             await db.flush()
             if first_publish:
                 pushes += await notify.notify_new_bill(db, bill)  # Step 8
+                cosponsors = await db.scalars(select(BillCosponsor.bioguide_id).where(BillCosponsor.bill_id == bill.id))
+                pushes += await notify.notify_legislator_bill(db, bill, bill.sponsor_id, set(cosponsors))
+
+    if outcome in ("refreshed", "updated") and new_cosponsors:
+        await db.flush()
+        pushes += await notify.notify_legislator_bill(db, bill, None, new_cosponsors)
 
     if not is_new and bill.is_published and old_status != bill.status:
         await db.flush()
@@ -160,6 +168,17 @@ async def run_ingestion(db: AsyncSession, api: CongressClient | None = None) -> 
             await db.rollback()
             counts["failed"] += 1
             log.exception("Failed to ingest %s %s-%s", congress, bill_type, number)
+
+    # Who's serving now (for "your representatives"), weekly; it's two or three free calls.
+    roster_synced = _parse_dt(await _get_state(db, ROSTER_SYNCED))
+    if not roster_synced or now - roster_synced > ROSTER_REFRESH:
+        try:
+            counts["roster"] = await legislators.sync_roster(db, api)
+            await _set_state(db, ROSTER_SYNCED, now.strftime(fmt))
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            log.exception("Failed to sync the current-member roster")
 
     # New sponsors/cosponsors get their photo and office details (and older ones a monthly refresh).
     counts["members_synced"] = await legislators.sync_members(db, api, limit=settings.ingest_max_members_per_run)

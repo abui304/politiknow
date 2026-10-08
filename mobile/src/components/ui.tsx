@@ -188,6 +188,40 @@ export function Chip({
   );
 }
 
+/** Pill-shaped tabs, e.g. Top / New. */
+export function Segmented<K extends string>({
+  options,
+  value,
+  onChange,
+  color = colors.ink,
+  small,
+}: {
+  options: { key: K; label: string; icon?: IconName }[];
+  value: K;
+  onChange: (key: K) => void;
+  color?: string;
+  small?: boolean;
+}) {
+  return (
+    <View style={[styles.segment, sticker(2, radius.pill)]} accessibilityRole="tablist">
+      {options.map((o) => {
+        const on = o.key === value;
+        return (
+          <BouncyPressable
+            key={o.key}
+            onPress={() => onChange(o.key)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            style={[styles.segmentBtn, small && { paddingVertical: 5 }, on && { backgroundColor: color }]}>
+            {o.icon ? <Icon name={o.icon} size={14} color={on ? '#fff' : colors.ink} /> : null}
+            <Text style={[styles.segmentText, small && { fontSize: 13 }, on && { color: '#fff' }]}>{o.label}</Text>
+          </BouncyPressable>
+        );
+      })}
+    </View>
+  );
+}
+
 export function Field({ label, error, ...props }: TextInputProps & { label?: string; error?: string }) {
   return (
     <View style={{ gap: 6 }}>
@@ -343,6 +377,9 @@ export function Avatar({ name, size = 40 }: { name: string; size?: number }) {
 }
 
 const styles = StyleSheet.create({
+  segment: { flexDirection: 'row', backgroundColor: colors.surfaceAlt, padding: 3 },
+  segmentBtn: { flex: 1, flexDirection: 'row', gap: 5, justifyContent: 'center', paddingVertical: 8, borderRadius: radius.pill, alignItems: 'center' },
+  segmentText: { fontFamily: fonts.extrabold, fontSize: 14, color: colors.ink },
   screen: { flex: 1, backgroundColor: colors.bg },
   column: { flex: 1, width: '100%', maxWidth: APP_MAX_WIDTH, alignSelf: 'center' },
   topBar: { flexDirection: 'row', alignItems: 'center', paddingVertical: space.md, gap: space.sm },

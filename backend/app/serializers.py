@@ -4,7 +4,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
-from app.models import Bill, Comment, CommentVote, Legislator, User, Vote
+from app.models import Bill, BillFollow, Comment, CommentVote, Legislator, User, Vote
 from app.schemas import BillOut, CommentOut
 
 
@@ -16,10 +16,17 @@ def sponsor_label(legislator: Legislator) -> str:
     return f"{legislator.name} ({legislator.party or '?'}-{seat})" if seat else legislator.name
 
 
-async def bills_out(db: AsyncSession, user: User, bills: list[Bill]) -> list[BillOut]:
+async def bills_out(
+    db: AsyncSession, user: User, bills: list[Bill], extra: dict[uuid.UUID, dict] | None = None
+) -> list[BillOut]:
+    """`extra` adds per-bill fields, e.g. the feed's `reason` or a search `snippet`."""
+    ids = [b.id for b in bills]
     votes = dict((await db.execute(
-        select(Vote.bill_id, Vote.value).where(Vote.user_id == user.id, Vote.bill_id.in_([b.id for b in bills]))
+        select(Vote.bill_id, Vote.value).where(Vote.user_id == user.id, Vote.bill_id.in_(ids))
     )).all())
+    followed = set(await db.scalars(
+        select(BillFollow.bill_id).where(BillFollow.user_id == user.id, BillFollow.bill_id.in_(ids))
+    ))
     sponsor_ids = {b.sponsor_id for b in bills if b.sponsor_id}
     sponsors = {
         m.bioguide_id: sponsor_label(m)
@@ -30,6 +37,8 @@ async def bills_out(db: AsyncSession, user: User, bills: list[Bill]) -> list[Bil
             "my_vote": votes.get(b.id, 0),
             # Bills whose sponsor isn't linked (e.g. demo data) keep Congress.gov's raw name.
             "sponsor_label": sponsors.get(b.sponsor_id) or b.sponsor_name,
+            "is_following": b.id in followed,
+            **(extra or {}).get(b.id, {}),
         })
         for b in bills
     ]

@@ -14,17 +14,25 @@ import type {
   BillPage,
   Chamber,
   Comment,
+  CommentSort,
   CommentWithBill,
   Cosponsor,
+  District,
+  FeedSort,
+  FloorWeek,
+  Following,
   Hashtag,
   Legislator,
   LegislatorRole,
   Me,
+  NationalMap,
   NotificationPrefs,
   PartyFilter,
   Profile,
+  Representatives,
   StageCount,
   StageFilter,
+  StateDistricts,
   StateMap,
   Tag,
 } from './types';
@@ -42,6 +50,7 @@ export const keys = {
   me: ['me'] as const,
   tags: ['tags'] as const,
   feed: ['feed'] as const,
+  feedSorted: (sort: FeedSort) => ['feed', sort] as const,
   search: (f: SearchFilters) => ['search', f] as const,
   hashtags: ['hashtags'] as const,
   stages: (f: Omit<SearchFilters, 'stage'>) => ['stages', f] as const,
@@ -57,6 +66,11 @@ export const keys = {
   profile: (id: string) => ['profile', id] as const,
   userComments: (id: string) => ['userComments', id] as const,
   notifications: ['notifications'] as const,
+  following: ['following'] as const,
+  stateDistricts: (state: string) => ['districts', state] as const,
+  myDistricts: ['districts', 'mine'] as const,
+  representatives: ['representatives'] as const,
+  calendar: ['calendar'] as const,
 };
 
 // ---------- reads ----------
@@ -66,10 +80,10 @@ export const useMe = () => useQuery({ queryKey: keys.me, queryFn: () => api<Me>(
 export const useTags = () =>
   useQuery({ queryKey: keys.tags, queryFn: () => api<Tag[]>('/tags'), staleTime: Infinity });
 
-export const useFeed = () =>
+export const useFeed = (sort: FeedSort = 'for_you') =>
   useInfiniteQuery({
-    queryKey: keys.feed,
-    queryFn: ({ pageParam }) => api<BillPage>(`/feed?cursor=${pageParam}&limit=15`),
+    queryKey: keys.feedSorted(sort),
+    queryFn: ({ pageParam }) => api<BillPage>(`/feed?sort=${sort}&cursor=${pageParam}&limit=15`),
     initialPageParam: 0,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
   });
@@ -151,8 +165,12 @@ export const useBillText = (id: string, enabled: boolean) =>
     staleTime: Infinity,
   });
 
-export const useComments = (billId: string) =>
-  useQuery({ queryKey: keys.comments(billId), queryFn: () => api<Comment[]>(`/bills/${billId}/comments`) });
+export const useComments = (billId: string, sort: CommentSort = 'top') =>
+  useQuery({
+    queryKey: [...keys.comments(billId), sort],
+    queryFn: () => api<Comment[]>(`/bills/${billId}/comments?sort=${sort}`),
+    placeholderData: (previous) => previous, // keep the list up while switching Top/New
+  });
 
 export const useProfile = (id: string) =>
   useQuery({ queryKey: keys.profile(id), queryFn: () => api<Profile>(`/users/${id}`) });
@@ -167,6 +185,31 @@ export const useUserComments = (id: string | undefined) =>
 export const useNotifications = () =>
   useQuery({ queryKey: keys.notifications, queryFn: () => api<AppNotification[]>('/notifications') });
 
+/** Legislators and bills the signed-in user follows. */
+export const useFollowing = () =>
+  useQuery({ queryKey: keys.following, queryFn: () => api<Following>('/users/me/following') });
+
+/** The nationwide map; static, like the state maps. */
+export const useNationalMap = () =>
+  useQuery({ queryKey: keys.stateMap('US'), queryFn: () => api<NationalMap>('/maps/US'), staleTime: Infinity });
+
+export const useStateDistricts = (state: string | null | undefined) =>
+  useQuery({
+    queryKey: keys.stateDistricts(state ?? ''),
+    queryFn: () => api<StateDistricts>(`/districts/${state}`),
+    enabled: Boolean(state),
+  });
+
+export const useMyDistricts = () =>
+  useQuery({ queryKey: keys.myDistricts, queryFn: () => api<District[]>('/users/me/districts') });
+
+export const useRepresentatives = () =>
+  useQuery({ queryKey: keys.representatives, queryFn: () => api<Representatives>('/users/me/representatives') });
+
+/** This week's House and Senate floor schedule. */
+export const useCalendar = () =>
+  useQuery({ queryKey: keys.calendar, queryFn: () => api<FloorWeek>('/calendar'), staleTime: 10 * 60_000 });
+
 // ---------- writes ----------
 
 /** Apply a change to a bill everywhere it's cached (feed, search and legislator pages, detail). */
@@ -179,7 +222,7 @@ function patchBill(qc: QueryClient, id: string, patch: Partial<Bill>) {
         items: p.items.map((b) => (b.id === id ? { ...b, ...patch } : b)),
       })),
     };
-  qc.setQueryData(keys.feed, patchPages);
+  qc.setQueriesData({ queryKey: keys.feed }, patchPages);
   qc.setQueriesData({ queryKey: ['search'] }, patchPages);
   qc.setQueriesData({ queryKey: ['legislatorBills'] }, patchPages);
   qc.setQueryData<Bill>(keys.bill(id), (b) => b && { ...b, ...patch });
@@ -255,6 +298,62 @@ export function useFollow(userId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.profile(userId) });
       qc.invalidateQueries({ queryKey: keys.me });
+    },
+  });
+}
+
+export function useFollowBill() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, follow }: { id: string; follow: boolean }) =>
+      api(`/bills/${id}/follow`, { method: follow ? 'POST' : 'DELETE' }),
+    onMutate: ({ id, follow }) => patchBill(qc, id, { is_following: follow }), // one tap, instant
+    onError: (_e, { id, follow }) => patchBill(qc, id, { is_following: !follow }),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.following }),
+  });
+}
+
+export function useFollowLegislator(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (follow: boolean) => api(`/legislators/${id}/follow`, { method: follow ? 'POST' : 'DELETE' }),
+    onMutate: (follow) => qc.setQueryData<Legislator>(keys.legislator(id), (l) => l && { ...l, is_following: follow }),
+    onError: (_e, follow) => qc.setQueryData<Legislator>(keys.legislator(id), (l) => l && { ...l, is_following: !follow }),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.following }),
+  });
+}
+
+/** Refetch everything that shows districts after the home district or a follow changes. */
+function refreshPlaces(qc: QueryClient) {
+  qc.invalidateQueries({ queryKey: ['districts'] });
+  qc.invalidateQueries({ queryKey: keys.representatives });
+  qc.invalidateQueries({ queryKey: keys.me });
+}
+
+export function useFollowDistrict() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ state, district, follow }: { state: string; district: number; follow: boolean }) =>
+      api(`/districts/${state}/${district}/follow`, { method: follow ? 'POST' : 'DELETE' }),
+    onSuccess: () => refreshPlaces(qc),
+  });
+}
+
+/** Sets the home district from a location (used once, never stored) or a district picked on the map. */
+export function useSetHome() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      body: { latitude: number; longitude: number } | { state: string; district: number } | null,
+    ): Promise<Representatives | undefined> =>
+      body === null
+        ? api('/users/me/home', { method: 'DELETE' })
+        : 'latitude' in body
+          ? api<Representatives>('/users/me/home/locate', { method: 'POST', body })
+          : api<Representatives>('/users/me/home', { method: 'PUT', body }),
+    onSuccess: (reps) => {
+      qc.setQueryData(keys.representatives, reps ?? { home: null, senators: [] });
+      refreshPlaces(qc);
     },
   });
 }

@@ -1,13 +1,14 @@
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, FlatList, Linking, StyleSheet, Text, View } from 'react-native';
 
 import { BillCard, PartyBadge } from '@/components/BillCard';
 import { DistrictMap } from '@/components/DistrictMap';
 import { LegislatorPhoto } from '@/components/LegislatorPhoto';
-import { BouncyPressable, Card, Chip, Empty, Icon, type IconName, Loading, Screen, TopBar, Txt } from '@/components/ui';
+import { BouncyPressable, Button, Card, Chip, Empty, Icon, type IconName, Loading, Screen, TopBar, Txt } from '@/components/ui';
 import { legislatorPlace, ordinal } from '@/lib/format';
-import { useLegislator, useLegislatorBills, useStateMap } from '@/lib/queries';
+import { useFollowLegislator, useLegislator, useLegislatorBills, useStateMap } from '@/lib/queries';
+import { toast, toastError } from '@/lib/toast';
 import type { Legislator, LegislatorRole, StateMap } from '@/lib/types';
 import { colors, fonts, partyColors, radius, space, sticker, type } from '@/theme';
 
@@ -64,6 +65,7 @@ export default function LegislatorPage() {
                   </View>
                   <Text style={styles.heroName}>{legislator.name}</Text>
                   <Text style={styles.heroMeta}>{legislatorPlace(legislator)}</Text>
+                  <FollowButton legislator={legislator} />
                 </View>
               </View>
               <View style={styles.stats}>
@@ -126,6 +128,28 @@ export default function LegislatorPage() {
   );
 }
 
+/** Alerts when they sponsor or cosponsor a bill, and their bills ranked up in the feed. */
+function FollowButton({ legislator: l }: { legislator: Legislator }) {
+  const follow = useFollowLegislator(l.bioguide_id);
+  const on = l.is_following;
+  const toggle = () =>
+    follow.mutate(!on, {
+      onSuccess: () => toast(on ? `Unfollowed ${l.name}` : `Following ${l.name}. You’ll hear when they back a bill.`, 'success'),
+      onError: toastError,
+    });
+  return (
+    <BouncyPressable
+      onPress={toggle}
+      accessibilityRole="button"
+      accessibilityState={{ selected: on }}
+      accessibilityLabel={on ? `Unfollow ${l.name}` : `Follow ${l.name}`}
+      style={[styles.follow, sticker(2, radius.pill), { backgroundColor: on ? colors.yellow : colors.surface }]}>
+      <Icon name={on ? 'check' : 'bell'} size={14} />
+      <Text style={styles.followText}>{on ? 'Following' : 'Follow'}</Text>
+    </BouncyPressable>
+  );
+}
+
 /** Thumbnail of the member's district in the header; tapping it opens the District tab. */
 function MiniMap({ legislator, onPress }: { legislator: Legislator; onPress: () => void }) {
   const { data: map } = useStateMap(legislator.state);
@@ -172,6 +196,18 @@ function AreaCard({ legislator }: { legislator: Legislator }) {
           <ActivityIndicator color={colors.inkSoft} />
         </View>
       )}
+      <Button
+        small
+        variant="secondary"
+        icon="map"
+        title={`All of ${map?.name ?? legislator.state}’s districts`}
+        style={{ alignSelf: 'flex-start' }}
+        onPress={() => {
+          const key = map ? districtKey(legislator, map) : null;
+          const state = legislator.state ?? '';
+          router.push({ pathname: '/state/[code]', params: key ? { code: state, district: key } : { code: state } });
+        }}
+      />
     </Card>
   );
 }
@@ -271,5 +307,7 @@ const styles = StyleSheet.create({
   infoIcon: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt },
   roles: { flexDirection: 'row', gap: 6 },
   miniMap: { width: 96 },
+  follow: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', paddingVertical: 5, paddingHorizontal: 12, marginTop: space.xs },
+  followText: { fontFamily: fonts.extrabold, fontSize: 13, color: colors.ink },
   roleTag: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6, marginLeft: 4 },
 });

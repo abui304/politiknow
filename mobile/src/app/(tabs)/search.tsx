@@ -79,7 +79,7 @@ export default function Search() {
                 <Field
                   value={text}
                   onChangeText={setText}
-                  placeholder="Titles, #hashtags, legislators…"
+                  placeholder="Words in bills, #hashtags, legislators…"
                   returnKeyType="search"
                   autoCorrect={false}
                 />

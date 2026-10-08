@@ -12,7 +12,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models import Bill, Comment, Follow, Notification, User, Vote
+from app.models import Bill, BillFollow, Comment, Follow, Legislator, LegislatorFollow, Notification, User, Vote
 from app.schemas import NotificationPrefs
 
 log = logging.getLogger(__name__)
@@ -99,6 +99,15 @@ async def users_engaged_with_bill(db: AsyncSession, bill_id: uuid.UUID) -> list[
     return list(await db.scalars(select(User).where(or_(User.id.in_(voters), User.id.in_(commenters)))))
 
 
+async def users_following_bill(db: AsyncSession, bill_id: uuid.UUID) -> list[User]:
+    """Followers plus anyone who voted or commented: everyone who wants to hear when it moves."""
+    followers = select(BillFollow.user_id).where(BillFollow.bill_id == bill_id)
+    engaged = {u.id: u for u in await users_engaged_with_bill(db, bill_id)}
+    for u in await db.scalars(select(User).where(User.id.in_(followers))):
+        engaged.setdefault(u.id, u)
+    return list(engaged.values())
+
+
 async def notify_new_bill(db: AsyncSession, bill: Bill) -> list[dict]:
     users = await users_following_tags(db, bill.primary_tags)
     tag = bill.primary_tags[0] if bill.primary_tags else "New"
@@ -106,7 +115,7 @@ async def notify_new_bill(db: AsyncSession, bill: Bill) -> list[dict]:
 
 
 async def notify_status_change(db: AsyncSession, bill: Bill) -> list[dict]:
-    users = await users_engaged_with_bill(db, bill.id)
+    users = await users_following_bill(db, bill.id)
     body = bill.latest_action_text or bill.status
     return await notify(db, users, "status_update", f"Update on {bill.label}", body, bill.id)
 
@@ -126,3 +135,31 @@ async def notify_social(db: AsyncSession, actor: User, bill: Bill) -> list[dict]
     users = [u for u in await db.scalars(select(User).where(User.id.in_(followers))) if u.id in engaged]
     title = f"@{actor.display_name} commented"
     return await notify(db, users, "social", title, f"on {bill.label}: {bill.title}", bill.id)
+
+
+async def notify_legislator_bill(
+    db: AsyncSession, bill: Bill, sponsor_id: str | None, cosponsor_ids: set[str]
+) -> list[dict]:
+    """Followers of the bill's sponsor, or of members who just cosponsored it. Each follower hears once,
+    about the member they follow (sponsor first)."""
+    ids = [i for i in [sponsor_id, *sorted(cosponsor_ids - {sponsor_id})] if i]
+    if not ids:
+        return []
+    names = {m.bioguide_id: m.name for m in await db.scalars(select(Legislator).where(Legislator.bioguide_id.in_(ids)))}
+    follows = (await db.execute(
+        select(LegislatorFollow.user_id, LegislatorFollow.bioguide_id).where(LegislatorFollow.bioguide_id.in_(ids))
+    )).all()
+    by_member: dict[str, list[uuid.UUID]] = {}
+    seen: set[uuid.UUID] = set()
+    for member in ids:
+        for user_id, followed in follows:
+            if followed == member and user_id not in seen:
+                seen.add(user_id)
+                by_member.setdefault(member, []).append(user_id)
+    pushes: list[dict] = []
+    for member, user_ids in by_member.items():
+        users = list(await db.scalars(select(User).where(User.id.in_(user_ids))))
+        verb = "sponsored" if member == sponsor_id else "cosponsored"
+        title = f"{names.get(member, 'A legislator you follow')} {verb} a bill"
+        pushes += await notify(db, users, "legislator", title, f"{bill.label} - {bill.title}", bill.id)
+    return pushes

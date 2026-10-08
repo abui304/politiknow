@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { shortDate, truncate } from '@/lib/format';
-import { useVoteBill } from '@/lib/queries';
+import { useFollowBill, useVoteBill } from '@/lib/queries';
 import { shareBill } from '@/lib/share';
 import { toastError } from '@/lib/toast';
 import type { Bill } from '@/lib/types';
@@ -37,6 +37,47 @@ export function VoteControl({ bill, onDark = true }: { bill: Bill; onDark?: bool
   );
 }
 
+/** One-tap follow: alerts when the bill moves, without voting or commenting. */
+export function FollowBillButton({ bill, onDark = true, label = false }: { bill: Bill; onDark?: boolean; label?: boolean }) {
+  const follow = useFollowBill();
+  const on = bill.is_following;
+  const fg = on || !onDark ? colors.ink : '#fff';
+  return (
+    <BouncyPressable
+      onPress={() => follow.mutate({ id: bill.id, follow: !on }, { onError: toastError })}
+      accessibilityRole="button"
+      accessibilityLabel={on ? `Unfollow ${bill.label}` : `Follow ${bill.label} for updates`}
+      accessibilityState={{ selected: on }}
+      style={[styles.followBtn, label && styles.followLabeled, on && styles.voteOn]}>
+      <Icon name="bell" size={16} color={fg} />
+      {label ? <Text style={[styles.footerText, { color: fg }]}>{on ? 'Following' : 'Follow'}</Text> : null}
+    </BouncyPressable>
+  );
+}
+
+/** Search passage with the matched words (wrapped in \u0002…\u0003 by the API) in bold. */
+export function Snippet({ text, color }: { text: string; color: string }) {
+  const parts = text.split(/(\u0002[^\u0003]*\u0003)/);
+  return (
+    <View style={styles.snippet}>
+      <Icon name="search" size={13} color={colors.inkSoft} />
+      <Txt style={[type.small, { flex: 1, color: colors.inkSoft, lineHeight: 18 }]} numberOfLines={4}>
+        …
+        {parts.map((part, i) =>
+          part.startsWith('\u0002') ? (
+            <Text key={i} style={{ fontFamily: fonts.extrabold, color }}>
+              {part.slice(1, -1)}
+            </Text>
+          ) : (
+            part
+          ),
+        )}
+        …
+      </Txt>
+    </View>
+  );
+}
+
 export function PartyBadge({ code }: { code: string | null }) {
   const p = partyColors(code);
   return (
@@ -48,7 +89,9 @@ export function PartyBadge({ code }: { code: string | null }) {
 
 export function BillCard({ bill }: { bill: Bill }) {
   const p = partyColors(bill.sponsor_party);
-  const open = () => router.push({ pathname: '/bill/[id]', params: { id: bill.id } });
+  // From search, the first matched word goes along so the bill page's text finder is ready with it.
+  const find = bill.snippet?.match(/\u0002([^\u0003]*)\u0003/)?.[1];
+  const open = () => router.push({ pathname: '/bill/[id]', params: find ? { id: bill.id, find } : { id: bill.id } });
 
   return (
     <View style={[styles.card, sticker(4)]}>
@@ -65,13 +108,22 @@ export function BillCard({ bill }: { bill: Bill }) {
           ) : null}
         </View>
         <View style={styles.body}>
+          {bill.reason ? (
+            <View style={styles.reason} accessibilityLabel={`Why you're seeing this: ${bill.reason}`}>
+              <Icon name="info" size={13} color={colors.muted} />
+              <Txt style={styles.reasonText} numberOfLines={1}>
+                {bill.reason}
+              </Txt>
+            </View>
+          ) : null}
           <Txt style={type.h3} numberOfLines={3}>
             {bill.title}
           </Txt>
           <View style={{ marginTop: space.md }}>
             <BillTimeline bill={bill} />
           </View>
-          {bill.summary_simple ? (
+          {bill.snippet ? <Snippet text={bill.snippet} color={p.main} /> : null}
+          {bill.summary_simple && !bill.snippet ? (
             <Txt style={[type.body, { marginTop: space.sm, color: colors.inkSoft }]}>
               {truncate(bill.summary_simple, 240)} <Text style={{ fontFamily: fonts.extrabold, color: p.main }}>Read more</Text>
             </Txt>
@@ -90,6 +142,7 @@ export function BillCard({ bill }: { bill: Bill }) {
           <Icon name="message-circle" size={17} color="#fff" />
           <Text style={styles.footerText}>{bill.comment_count}</Text>
         </BouncyPressable>
+        <FollowBillButton bill={bill} />
         <BouncyPressable onPress={() => shareBill(bill)} style={styles.footerBtn} accessibilityLabel="Share">
           <Icon name="share" size={16} color="#fff" />
           <Text style={styles.footerText}>Share</Text>
@@ -140,5 +193,10 @@ const styles = StyleSheet.create({
   vote: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   voteBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   voteOn: { backgroundColor: colors.yellow, borderWidth: 2, borderColor: colors.line },
+  followBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 34, minWidth: 34, borderRadius: 17, justifyContent: 'center', marginHorizontal: 2 },
+  followLabeled: { paddingHorizontal: space.md },
+  reason: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: space.sm },
+  reasonText: { fontFamily: fonts.bold, fontSize: 12, color: colors.muted, flex: 1 },
+  snippet: { flexDirection: 'row', gap: 6, marginTop: space.sm, padding: space.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceAlt },
   score: { fontFamily: fonts.black, fontSize: 16, minWidth: 28, textAlign: 'center' },
 });

@@ -44,6 +44,9 @@ class FakeCongress:
                 "addressInformation": {"officeAddress": "1 Longworth House Office Building", "zipCode": 20515,
                                        "phoneNumber": "(202) 225-0000"}}
 
+    async def current_members(self, congress):
+        return []
+
     async def latest_text(self, congress, bill_type, number):
         t = self.text[number]
         return ("Introduced", t) if t else None

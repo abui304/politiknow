@@ -5,15 +5,20 @@ import { StyleSheet, Text, View } from 'react-native';
 import { timeAgo } from '@/lib/format';
 import { useAddComment, useCommentActions, useComments } from '@/lib/queries';
 import { toast, toastError } from '@/lib/toast';
-import type { Comment } from '@/lib/types';
+import type { Comment, CommentSort } from '@/lib/types';
 import { colors, fonts, radius, space, type } from '@/theme';
 
-import { Avatar, BouncyPressable, Button, Card, Field, Icon, Loading, Sheet, Txt } from './ui';
+import { Avatar, BouncyPressable, Button, Card, Field, Icon, Loading, Segmented, Sheet, Txt } from './ui';
 
 const MAX = 2000;
+const SORTS: { key: CommentSort; label: string; icon: 'award' | 'clock' }[] = [
+  { key: 'top', label: 'Top', icon: 'award' },
+  { key: 'new', label: 'New', icon: 'clock' },
+];
 
-export function CommentsSection({ billId }: { billId: string }) {
-  const { data: comments, isLoading } = useComments(billId);
+export function CommentsSection({ billId, color = colors.ink }: { billId: string; color?: string }) {
+  const [sort, setSort] = useState<CommentSort>('top');
+  const { data: comments, isLoading } = useComments(billId, sort);
   const add = useAddComment(billId);
   const [body, setBody] = useState('');
   const [replyTo, setReplyTo] = useState<Comment | null>(null);
@@ -58,6 +63,9 @@ export function CommentsSection({ billId }: { billId: string }) {
         </View>
       </Card>
 
+      {(comments?.length ?? 0) > 1 ? (
+        <Segmented options={SORTS} value={sort} onChange={setSort} color={color} small />
+      ) : null}
       {isLoading ? (
         <Loading />
       ) : comments?.length ? (

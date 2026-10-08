@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { View } from 'react-native';
 
+import { FollowingCard, MyMapCard, RepresentativesCard } from '@/components/MyPlaces';
 import { ProfileView } from '@/components/ProfileView';
 import { Button, Card, Chip, Loading, Screen, Txt } from '@/components/ui';
 import { useMe } from '@/lib/queries';
@@ -20,14 +21,19 @@ export default function MyProfile() {
         joined={me.created_at}
         actions={<Button title="Settings" icon="settings" variant="secondary" small onPress={() => router.push('/settings')} />}
         extra={
-          <Card style={{ gap: space.md }}>
-            <Txt style={type.h3}>My topics</Txt>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-              {me.onboarding_tags.map((t) => (
-                <Chip key={t} label={t} />
-              ))}
-            </View>
-          </Card>
+          <>
+            <RepresentativesCard />
+            <MyMapCard />
+            <FollowingCard />
+            <Card style={{ gap: space.md }}>
+              <Txt style={type.h3}>My topics</Txt>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {me.onboarding_tags.map((t) => (
+                  <Chip key={t} label={t} />
+                ))}
+              </View>
+            </Card>
+          </>
         }
       />
     </Screen>

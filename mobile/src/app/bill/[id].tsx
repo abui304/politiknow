@@ -3,7 +3,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { PartyBadge, VoteControl } from '@/components/BillCard';
+import { FollowBillButton, PartyBadge, VoteControl } from '@/components/BillCard';
 import { BillTimeline } from '@/components/BillTimeline';
 import { CommentsSection } from '@/components/Comments';
 import { BouncyPressable, Button, Card, Chip, Empty, Field, Icon, Loading, Screen, TopBar, Txt } from '@/components/ui';
@@ -14,12 +14,15 @@ import { toast, toastError } from '@/lib/toast';
 import { colors, fonts, partyColors, radius, space, sticker, type } from '@/theme';
 
 const FULL_TEXT_PREVIEW = 20_000;
+const MAX_MATCHES = 50;
 
 export default function BillDetail() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // `find`: the search words, when opened from Search, so they're ready in the bill-text finder.
+  const { id, find } = useLocalSearchParams<{ id: string; find?: string }>();
   const { data: bill, isLoading, error } = useBill(id);
   const [level, setLevel] = useState<'simple' | 'detailed'>('simple');
   const [showText, setShowText] = useState(false);
+  const [query, setQuery] = useState(find ?? '');
   const text = useBillText(id, showText);
 
   useEffect(() => {
@@ -91,9 +94,12 @@ export default function BillDetail() {
         </View>
         <View style={styles.heroFooter}>
           <VoteControl bill={bill} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Icon name="message-circle" size={17} color="#fff" />
-            <Text style={styles.heroMetaText}>{bill.comment_count}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Icon name="message-circle" size={17} color="#fff" />
+              <Text style={styles.heroMetaText}>{bill.comment_count}</Text>
+            </View>
+            <FollowBillButton bill={bill} label />
           </View>
         </View>
       </View>
@@ -134,7 +140,14 @@ export default function BillDetail() {
         {showText ? (
           text.isLoading ? (
             <Loading label="Fetching bill text…" />
+          ) : query.trim().length >= 2 && text.data?.full_text ? (
+            <View style={{ gap: space.sm }}>
+              <FindField value={query} onChange={setQuery} />
+              <TextMatches text={text.data.full_text} query={query.trim()} color={p.main} />
+            </View>
           ) : (
+            <View style={{ gap: space.sm }}>
+              {text.data?.full_text ? <FindField value={query} onChange={setQuery} /> : null}
             <ScrollView style={styles.fullText} nestedScrollEnabled>
               <Txt style={[type.small, { color: colors.ink, fontFamily: fonts.regular }]} selectable>
                 {(text.data?.full_text ?? 'Full text unavailable.').slice(0, FULL_TEXT_PREVIEW)}
@@ -143,6 +156,7 @@ export default function BillDetail() {
                 <Txt style={[type.small, { marginTop: space.md }]}>…continued on Congress.gov</Txt>
               ) : null}
             </ScrollView>
+            </View>
           )
         ) : null}
 
@@ -153,9 +167,65 @@ export default function BillDetail() {
       </Card>
 
       <View style={{ marginTop: space.xl }}>
-        <CommentsSection billId={bill.id} />
+        <CommentsSection billId={bill.id} color={p.main} />
       </View>
     </Screen>
+  );
+}
+
+function FindField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <Field
+      value={value}
+      onChangeText={onChange}
+      placeholder="Find in bill text"
+      autoCapitalize="none"
+      autoCorrect={false}
+      returnKeyType="search"
+      accessibilityLabel="Find in bill text"
+    />
+  );
+}
+
+function escapeRegExp(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Every place the words appear in the whole bill (not just the preview), with a little context.
+ *  Phones have no find-in-page, so this stands in for Ctrl+F. */
+function TextMatches({ text, query, color }: { text: string; query: string; color: string }) {
+  const re = new RegExp(escapeRegExp(query), 'gi');
+  const matches: { before: string; hit: string; after: string; at: number }[] = [];
+  let total = 0;
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    total++;
+    if (matches.length < MAX_MATCHES) {
+      const squash = (s: string) => s.replace(/\s+/g, ' ');
+      matches.push({
+        before: squash(text.slice(Math.max(0, m.index - 90), m.index)),
+        hit: m[0],
+        after: squash(text.slice(m.index + m[0].length, m.index + m[0].length + 90)),
+        at: m.index,
+      });
+    }
+  }
+  return (
+    <View style={{ gap: space.sm }}>
+      <Txt style={type.small}>
+        {total === 0
+          ? `No matches for “${query}”`
+          : `${total} match${total === 1 ? '' : 'es'}${total > MAX_MATCHES ? `, first ${MAX_MATCHES} shown` : ''}`}
+      </Txt>
+      <ScrollView style={styles.fullText} nestedScrollEnabled>
+        {matches.map((m) => (
+          <Txt key={m.at} style={[type.small, styles.match]} selectable>
+            …{m.before}
+            <Text style={{ fontFamily: fonts.black, color }}>{m.hit}</Text>
+            {m.after}…
+          </Txt>
+        ))}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -268,4 +338,5 @@ const styles = StyleSheet.create({
   segmentText: { fontFamily: fonts.extrabold, fontSize: 14, color: colors.ink },
   disclaimer: { backgroundColor: '#FFF6D6', borderRadius: radius.md, padding: space.md, borderWidth: 2, borderColor: colors.yellow, borderStyle: 'dashed' },
   fullText: { maxHeight: 420, backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: space.md },
+  match: { color: colors.ink, fontFamily: fonts.regular, paddingVertical: space.sm, borderBottomWidth: 1, borderBottomColor: colors.hairline },
 });

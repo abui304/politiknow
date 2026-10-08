@@ -4,10 +4,10 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import delete, func, select
 
 from app.deps import DB, CurrentUser, IncompleteUser
-from app.models import Bill, Comment, Follow, User
+from app.models import Bill, BillFollow, Comment, Follow, Legislator, LegislatorFollow, User
 from app.routers.auth import display_name_taken
-from app.schemas import CommentWithBill, MeOut, MeUpdate, NotificationPrefs, ProfileOut
-from app.serializers import comments_out, visible_comments
+from app.schemas import CommentWithBill, FollowingOut, LegislatorBase, MeOut, MeUpdate, NotificationPrefs, ProfileOut
+from app.serializers import bills_out, comments_out, visible_comments
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -31,6 +31,8 @@ async def _me(db, user: User) -> MeOut:
         email_verified=user.email_verified,
         follower_count=followers,
         following_count=following,
+        home_state=user.home_state,
+        home_district=user.home_district,
         created_at=user.created_at,
     )
 
@@ -55,6 +57,24 @@ async def update_me(body: MeUpdate, db: DB, user: IncompleteUser):
         user.push_token = body.push_token
     await db.commit()
     return await _me(db, user)
+
+
+@router.get("/me/following", response_model=FollowingOut)
+async def my_follows(db: DB, user: CurrentUser):
+    """Legislators and bills the user follows, most recent first."""
+    legislators = await db.scalars(
+        select(Legislator).join(LegislatorFollow, LegislatorFollow.bioguide_id == Legislator.bioguide_id)
+        .where(LegislatorFollow.user_id == user.id).order_by(LegislatorFollow.created_at.desc())
+    )
+    bills = list(await db.scalars(
+        select(Bill).join(BillFollow, BillFollow.bill_id == Bill.id)
+        .where(BillFollow.user_id == user.id, Bill.is_published.is_(True))
+        .order_by(BillFollow.created_at.desc()).limit(100)
+    ))
+    return FollowingOut(
+        legislators=[LegislatorBase.model_validate(m) for m in legislators],
+        bills=await bills_out(db, user, bills),
+    )
 
 
 async def _get_user(db, user_id: uuid.UUID) -> User:

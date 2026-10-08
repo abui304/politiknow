@@ -12,9 +12,10 @@ import { colors, space, type } from '@/theme';
 
 const TYPE_LABELS: Record<NotificationType, string> = {
   new_bill: 'New bills on my topics',
-  status_update: 'Updates on bills I’ve engaged with',
+  status_update: 'Updates on bills I follow or engaged with',
   trending: 'Trending on my topics',
   social: 'People I follow commenting',
+  legislator: 'New bills from legislators I follow',
 };
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;

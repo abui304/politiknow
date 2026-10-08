@@ -23,18 +23,24 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
 ### Feed
 - An infinite-scroll feed of bill cards, **personalized** to each user:
   ```
-  score = topic match × 0.45 + recency × 0.25 + trending × 0.20 + followed users × 0.10
+  score = topic match × 0.45 + recency × 0.25 + trending × 0.20 + followed users × 0.10 + follows × 0.20
   ```
   - **Topic match:** how much of the user's last 30 days of activity (views, votes, comments) involves the bill's topics, plus their onboarding picks.
   - **Recency:** halves every 30 days since the bill's last action (configurable).
   - **Trending:** bills getting unusual engagement in the last 24 hours (see below).
   - **Followed users:** bills that people you follow voted on or commented on.
-- Each card is **colored by the sponsor's party** (blue Democrat, red Republican, yellow Independent) and shows the bill number, date, a **timeline** of its path through Congress (Intro, Committee, House, Senate, President, Law) with the date of each step reached, a short plain-English summary, topics, a Trending badge, votes, comment count, and Share.
+  - **Follows:** bills you follow, and bills sponsored or cosponsored by legislators you follow.
+- **Why am I seeing this?** Each card says why it's there, e.g. "Because you follow Health" or "Sponsored by Kim Schrier, who you follow". It names the most personal reason that applies (something you follow, then your topics, then people you follow, then trending), and only says "Recent activity in Congress" when none do.
+- **For you / Most discussed** tabs. Most discussed ranks bills by comments in the last 7 days.
+- A **This week on the floor** link opens the floor calendar (see below).
+- Each card is **colored by the sponsor's party** (blue Democrat, red Republican, yellow Independent) and shows the bill number, date, a **timeline** of its path through Congress (Intro, Committee, House, Senate, President, Law) with the date of each step reached, a short plain-English summary, topics, a Trending badge, votes, comment count, a **Follow** bell, and Share.
 - Pull down to refresh and re-rank.
 
 ### Bill pages
 - **Simple** (about 150–250 words, no jargon) and **Detailed** (about 400–600 words) AI summaries, switchable with a toggle.
 - A persistent notice that the summary is AI-generated; tapping it shows the **full bill text** in the app (the first 20,000 characters, with the rest on Congress.gov).
+- **Find in bill text:** type a word to see every place it appears in the whole bill with a little context (phones have no Ctrl+F). Opening a bill from a search result fills it in with the matched word.
+- **Follow** a bill with one tap to get an alert whenever it moves, without voting or commenting on it.
 - The bill's **timeline** with dates, its latest action (one line; tap to expand), sponsor (e.g. "Kim Schrier (D-WA-8)"), topics, and **#hashtags** (folded into a small "Hashtags (N)" pill; tap to show them). Resolutions show their shorter path (a simple resolution only needs its own chamber; concurrent resolutions skip the President), and a vetoed bill ends in Vetoed.
 - **Tap the sponsor** to open their legislator page, or tap **Cosponsors (N)** to see every current cosponsor (original cosponsors first), each linking to their own page.
 - Link to the official Congress.gov page, and a **Report inaccuracy** button with an optional note.
@@ -42,12 +48,13 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
 
 ### Discussion
 - Comments up to 2,000 characters, with **one level of replies**.
-- Up/down votes on comments, sorted by score.
+- Up/down votes on comments, with **Top** (highest score) and **New** tabs.
 - Tap a commenter's name to open their profile.
 - Delete your own comments. Report others' for harassment, spam, misinformation, or something else.
 
 ### Search and hashtags
-- Search bill **titles, hashtags, and legislator names** by keyword. A name finds every bill that member sponsored or cosponsored, and matching legislators are listed above the bills.
+- Search bill **titles, summaries, full text, hashtags, and legislator names**. Text search uses Postgres full-text search, so "farm tax" also finds "taxes on family farms"; "quoted phrases" and -excluded words work. A name finds every bill that member sponsored or cosponsored, and matching legislators are listed above the bills.
+- Title and hashtag matches come first, then the best text matches. Bills matched by their summary or text show the **passage that matched**, with the words in bold.
 - A **status** row sits right under the search box. Each chip shows how many bills match within your other filters:
   - **Became law**, **President's desk**, **In committee**, **Vetoed**
   - **Awaiting Senate:** House bills that passed the House, with the Senate vote next (and **Awaiting House** the other way around). Simple resolutions never leave their own chamber, so they don't count.
@@ -63,13 +70,32 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
   - **About:** years in office and their Washington office.
 - The **map** is illustrated: the district filled in their party color inside its state, neighboring districts outlined, and major cities labeled. Small city districts zoom in, with a little state map showing where they are. Senators' maps fill the whole state.
 - The About tab lists **years served** in the House and Senate and the **Washington office** address and phone (tap to call).
+- **Follow** a legislator for an alert when they sponsor or cosponsor a bill (a new bill, or a new cosponsorship on an existing one); their bills also rank higher in your feed.
+- The District tab links to their whole state's district map.
 - Photos also appear in search suggestions and cosponsor lists.
 - Maps are drawn by the app from public-domain Census Bureau boundaries (119th Congress districts) and Natural Earth city data, so they need no map service or key.
 
+### Your district and the map (Me tab)
+- **Your representatives:** tap **Use my location** to find your congressional district, House member, and two senators. Or tap your state on the map and pick your district.
+  - **Privacy:** your location is sent once, in the request body (so it never lands in server logs), matched against the district boundaries, and thrown away. Only your state and district number are stored, and they're never shown on your public profile.
+  - The lookup uses full-detail Census boundaries (accurate to about 10 m) on the server, so it needs no map service.
+- **Your map:** the whole country with district lines, in the usual layout with Alaska, Hawaii, and Puerto Rico as insets and the small Northeast states and DC called out on the side. Your district is filled in mint, and districts you follow in lilac, each with a pin so even tiny city districts show up.
+  - **Tap a state** to open its district map with city labels. **Tap a district** (or a city, or a row in the list underneath) to see who represents it, open their page, **follow the district**, or make it your district.
+  - **Districts you follow** (where you grew up, a swing seat...) are listed under the map.
+- **Following:** the legislators and bills you follow.
+- "Who represents a district" comes from Congress.gov's list of current members, refreshed weekly by ingestion (also `sync-roster`), so it includes members who haven't sponsored anything yet.
+
+### Floor calendar
+- **This week on the floor** (from the Feed): what the House and Senate plan to take up this week, with each bill linked to its PolitiKNOW page when the app has it.
+- House: the Majority Leader's weekly "Bills this Week" file from docs.house.gov, grouped by how bills will be considered (e.g. under suspension of the rules). Bills a rule brings to the floor are linked too. If this week's file isn't out, next week's is shown once published.
+- Senate: when it last met and when it meets next, from the floor schedule page on senate.gov, with any bill numbers it mentions linked. (The Senate doesn't publish an item-by-item list.)
+- Both sources are free and public, and are cached for an hour.
+
 ### Alerts (notifications)
-- An in-app **Alerts** tab with an unread badge, for four kinds of alerts:
+- An in-app **Alerts** tab with an unread badge, for five kinds of alerts:
   - a new bill on one of your topics
-  - a status change on a bill you voted on or commented on
+  - a status change on a bill you follow, voted on, or commented on
+  - a legislator you follow sponsoring or cosponsoring a bill
   - a bill on your topics starting to trend
   - someone you follow commenting on a bill you've engaged with
 - Settings for each alert type, plus **quiet hours**. Capped at **5 alerts a day**.
@@ -143,7 +169,8 @@ Use three terminals:
 
 ```bash
 # 1. API  ->  http://localhost:8000/docs (interactive API docs)
-cd backend && .venv/bin/uvicorn app.main:app --reload --port 8000
+#    --host 0.0.0.0 lets the iOS Simulator and phones reach it, not just the browser
+cd backend && .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 # 2. Background jobs (ingestion 4x/day, trending, moderation, alerts)
 cd backend && .venv/bin/celery -A app.worker worker --beat --pool=solo --loglevel=info
@@ -170,7 +197,8 @@ Run from `backend/`:
 | `.venv/bin/python -m app.cli backfill-cosponsors` | Fetch sponsor and cosponsor details for bills ingested before they were tracked | Free (Congress.gov only) |
 | `.venv/bin/python -m app.cli backfill-timelines` | Build every bill's timeline from its Congress.gov actions and reset its status | Free (Congress.gov only) |
 | `.venv/bin/python -m app.cli sync-members` | Refresh every legislator's photo, years in office, and office details (ingestion also does up to 100 per run, monthly per member) | Free (Congress.gov only) |
-| `.venv/bin/python -m app.cli build-maps` | Rebuild the state and district maps in `backend/app/data/maps/` (needs `requirements-dev.txt`) | Free |
+| `.venv/bin/python -m app.cli sync-roster` | Mark who's serving now from Congress.gov's current-member list (ingestion also does this weekly) | Free (Congress.gov only) |
+| `.venv/bin/python -m app.cli build-maps` | Rebuild the state, national, and district-lookup maps in `backend/app/data/` (needs `requirements-dev.txt`) | Free |
 | `.venv/bin/python -m app.cli seed-demo` | Add 6 sample (older) bills and demo users, for UI work without API keys | Free without an OpenAI key |
 
 Demo logins after `seed-demo`: `civic_owl@example.com` / `politiknow123` (also `ballot_bunny`, `policy_panda`).
@@ -211,7 +239,8 @@ The full list is in `backend/app/config.py`.
 - **Moderator dashboard:** flagged comments (`comments.is_flagged`) and summary reports (`summary_reports`) are only in the database.
 - **Editing comments, deleting accounts.**
 - **Ads and premium subscription** (spec Phase 3).
-- **State and local bills, filtering by location:** planned in spec section 12.1.
+- **State and local bills, filtering the feed by location:** planned in spec section 12.1.
+- **Finding your district by ZIP code:** ZIP codes often span several districts, so only location (or picking on the map) is offered.
 - **Amendments, committee actions, and floor votes** as their own items (spec Phase 3).
 
 ## Tests and checks
@@ -229,10 +258,11 @@ The backend tests use the separate `politiknow_test` database, so they never tou
 backend/app/
   main.py           API app
   models.py         database tables
-  routers/          API endpoints (auth, users, bills, legislators, comments, notifications)
+  routers/          API endpoints (auth, users, bills, legislators, places, comments, notifications, calendar)
   services/         ingestion, Congress.gov client, AI, feed ranking, trending,
-                    hashtags, legislators, district maps, moderation, notifications
-  data/maps/        pre-drawn state and district maps (one JSON file per state)
+                    hashtags, legislators, district maps, floor schedule, moderation, notifications
+  data/maps/        pre-drawn state and district maps (one JSON file per state, plus US.json)
+  data/district_bounds.json  district boundaries for finding a user's district from their location
   worker.py         background job schedule
   cli.py            manual commands
 backend/alembic/    database migrations
@@ -248,6 +278,7 @@ mobile/src/
 ## Notes
 
 - **Existing databases:** after `alembic upgrade head`, run `backfill-cosponsors`, `backfill-timelines`, and then `sync-members` once, so bills ingested earlier get their sponsors and cosponsors linked and their timelines built, and every legislator gets a photo and office details. New ingestion keeps them current.
-- **District maps** reflect boundaries at the start of the 119th Congress. If states redraw districts, rerun `build-maps` once the Census Bureau publishes new files (update the file names in `services/district_maps.py`).
+- **District maps and the location lookup** reflect boundaries at the start of the 119th Congress. If states redraw districts, rerun `build-maps` once the Census Bureau publishes new files (update the file names in `services/district_maps.py`). It writes the per-state maps, the national map (`maps/US.json`, from the coarser 1:20m files), and `district_bounds.json` (full detail, about 9 MB, used only on the server).
+- **After pulling these changes:** run `alembic upgrade head` (adds follows, home districts, and full-text search; the search index is built for existing bills automatically) and `sync-roster` once so "Your representatives" works before the next ingestion run.
 - **Schema changes:** edit `backend/app/models.py`, then run `alembic revision --autogenerate -m "..."` and `alembic upgrade head`.
 - **Design:** the UI uses line icons only, no emoji. Bill cards keep the full party colors.

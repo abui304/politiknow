@@ -39,7 +39,13 @@
         }
       ],
       "expo-secure-store",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "PolitiKNOW uses your location once to find your congressional district. Only the district is saved, never your location."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

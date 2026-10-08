@@ -8,6 +8,7 @@ from datetime import date, datetime
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Computed,
     Date,
     DateTime,
     Enum,
@@ -21,7 +22,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app import timeline
@@ -66,6 +67,10 @@ class User(Base):
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     is_shadow_banned: Mapped[bool] = mapped_column(Boolean, default=False)
     push_token: Mapped[str | None] = mapped_column(String(255))
+    # The user's own congressional district. Private: never shown on their public profile, and found
+    # from their location without storing it (see routers/places.py). District 0 = at-large/delegate.
+    home_state: Mapped[str | None] = mapped_column(String(2))
+    home_district: Mapped[int | None] = mapped_column(SmallInteger)
     last_active_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
@@ -75,6 +80,16 @@ class User(Base):
     )
 
     __table_args__ = (UniqueConstraint("auth_provider", "social_provider_id"),)
+
+
+BILL_TYPE_NAMES = {
+    "HR": "H.R.", "S": "S.", "HJRES": "H.J.Res.", "SJRES": "S.J.Res.",
+    "HCONRES": "H.Con.Res.", "SCONRES": "S.Con.Res.", "HRES": "H.Res.", "SRES": "S.Res.",
+}
+
+
+def bill_label(bill_type: str, number: int) -> str:
+    return f"{BILL_TYPE_NAMES.get(bill_type, bill_type)} {number}"
 
 
 class Bill(Base):
@@ -110,10 +125,24 @@ class Bill(Base):
     last_action_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     ingested_at: Mapped[datetime] = created_at()
     version_hash: Mapped[str | None] = mapped_column(String(64))
+    # Full-text search over the title (weight A), summaries (B), and full text (C). The text is capped
+    # because a tsvector can't exceed 1 MB, which the longest bills (e.g. the NDAA) would.
+    search_vector: Mapped[str] = mapped_column(
+        TSVECTOR,
+        Computed(
+            "setweight(to_tsvector('english'::regconfig, coalesce(title, '')), 'A')"
+            " || setweight(to_tsvector('english'::regconfig,"
+            " coalesce(summary_simple, '') || ' ' || coalesce(summary_detailed, '')), 'B')"
+            " || setweight(to_tsvector('english'::regconfig, left(coalesce(full_text, ''), 300000)), 'C')",
+            persisted=True,
+        ),
+        deferred=True,
+    )
 
     __table_args__ = (
         UniqueConstraint("congress_number", "bill_type", "bill_number"),
         Index("ix_bills_primary_tags", "primary_tags", postgresql_using="gin"),
+        Index("ix_bills_search_vector", "search_vector", postgresql_using="gin"),
         Index(
             "ix_bills_title_trgm",
             "title",
@@ -130,11 +159,7 @@ class Bill(Base):
     @property
     def label(self) -> str:
         """Human bill number, e.g. "H.R. 1234"."""
-        names = {
-            "HR": "H.R.", "S": "S.", "HJRES": "H.J.Res.", "SJRES": "S.J.Res.",
-            "HCONRES": "H.Con.Res.", "SCONRES": "S.Con.Res.", "HRES": "H.Res.", "SRES": "S.Res.",
-        }
-        return f"{names.get(self.bill_type, self.bill_type)} {self.bill_number}"
+        return bill_label(self.bill_type, self.bill_number)
 
 
 class Legislator(Base):
@@ -159,6 +184,8 @@ class Legislator(Base):
     office_address: Mapped[str | None] = mapped_column(Text)
     phone: Mapped[str | None] = mapped_column(String(30))
     member_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    # Serving now, per Congress.gov's current-member roster (legislators.sync_roster).
+    in_office: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -269,6 +296,41 @@ class Follow(Base):
     created_at: Mapped[datetime] = created_at()
 
 
+class BillFollow(Base):
+    """Alerts when the bill moves, without voting or commenting on it."""
+
+    __tablename__ = "bill_follows"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    bill_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("bills.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    created_at: Mapped[datetime] = created_at()
+
+
+class LegislatorFollow(Base):
+    """Alerts when the member sponsors or cosponsors a bill, and their bills ranked up in the feed."""
+
+    __tablename__ = "legislator_follows"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    bioguide_id: Mapped[str] = mapped_column(
+        ForeignKey("legislators.bioguide_id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    created_at: Mapped[datetime] = created_at()
+
+
+class DistrictFollow(Base):
+    """A district the user is interested in (where they grew up, a swing seat...), highlighted on their map."""
+
+    __tablename__ = "district_follows"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    state: Mapped[str] = mapped_column(String(2), primary_key=True)
+    district: Mapped[int] = mapped_column(SmallInteger, primary_key=True)  # 0 = at-large/delegate
+    created_at: Mapped[datetime] = created_at()
+
+
 class UserTagInteraction(Base):
     __tablename__ = "user_tag_interactions"
 
@@ -288,7 +350,7 @@ class Notification(Base):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-    type: Mapped[str] = mapped_column(String(20))  # new_bill, status_update, trending, social
+    type: Mapped[str] = mapped_column(String(20))  # new_bill, status_update, trending, social, legislator
     title: Mapped[str] = mapped_column(String(255))
     body: Mapped[str] = mapped_column(Text)
     bill_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("bills.id", ondelete="CASCADE"))

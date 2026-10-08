@@ -5,11 +5,13 @@ import logging
 import re
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models import Bill, BillCosponsor, Legislator
+from app.services import district_maps
 from app.services.congress import CongressClient
 
 log = logging.getLogger(__name__)
@@ -57,8 +59,9 @@ async def upsert(db: AsyncSession, members: list[dict]) -> None:
     ))
 
 
-async def sync_bill(db: AsyncSession, api: CongressClient, bill: Bill, detail: dict) -> None:
-    """Records the bill's sponsor, and refetches its cosponsors when Congress.gov's count has changed."""
+async def sync_bill(db: AsyncSession, api: CongressClient, bill: Bill, detail: dict) -> set[str]:
+    """Records the bill's sponsor, and refetches its cosponsors when Congress.gov's count has changed.
+    Returns the members who newly cosponsored it."""
     sponsor = (detail.get("sponsors") or [{}])[0]
     if sponsor.get("bioguideId"):
         await upsert(db, [sponsor])
@@ -68,8 +71,9 @@ async def sync_bill(db: AsyncSession, api: CongressClient, bill: Bill, detail: d
 
     count = (detail.get("cosponsors") or {}).get("count", 0)
     if count == (bill.cosponsor_count or 0):
-        return
+        return set()
     await db.flush()  # a new bill needs its id
+    before = set(await db.scalars(select(BillCosponsor.bioguide_id).where(BillCosponsor.bill_id == bill.id)))
     current = [
         m for m in await api.cosponsors(bill.congress_number, bill.bill_type, bill.bill_number)
         if m.get("bioguideId") and not m.get("sponsorshipWithdrawnDate")
@@ -84,6 +88,66 @@ async def sync_bill(db: AsyncSession, api: CongressClient, bill: Bill, detail: d
             sponsorship_date=date.fromisoformat(m["sponsorshipDate"]) if m.get("sponsorshipDate") else None,
         ))
     bill.cosponsor_count = count
+    return {m["bioguideId"] for m in current} - before
+
+
+PARTY_NAMES = {"Democratic": "D", "Republican": "R", "Independent": "I", "Libertarian": "L"}
+
+
+def _roster_row(member: dict, state_codes: dict[str, str]) -> dict | None:
+    """A legislators row from Congress.gov's member list, which gives state names and "Last, First"."""
+    state = state_codes.get(member.get("state") or "")
+    if not state:
+        return None
+    terms = (member.get("terms") or {}).get("item") or []
+    latest = max(terms, key=lambda t: t.get("startYear") or 0, default={})
+    chamber = "senate" if latest.get("chamber") == "Senate" else "house"
+    party = PARTY_NAMES.get(member.get("partyName") or "", (member.get("partyName") or "?")[:1])
+    district = member.get("district") if chamber == "house" else None
+    last, _, first = (member.get("name") or "").partition(", ")
+    seat = f"{state}-{district}" if district else state
+    return {
+        "bioguide_id": member["bioguideId"],
+        "full_name": f"{'Sen.' if chamber == 'senate' else 'Rep.'} {member.get('name')} [{party}-{seat}]",
+        "first_name": first or None,
+        "last_name": last or None,
+        "party": party,
+        "state": state,
+        "district": district if chamber == "house" else None,
+        "chamber": chamber,
+        "image_url": (member.get("depiction") or {}).get("imageUrl"),
+        "in_office": True,
+    }
+
+
+async def sync_roster(db: AsyncSession, api: CongressClient) -> int:
+    """Marks who is serving now, adding current members who haven't sponsored anything ingested yet,
+    so every district and state can show its representatives. One to three free Congress.gov calls."""
+    state_codes = {data["name"]: code for code in STATE_CODES if (data := district_maps.load(code))}
+    # Congress.gov's short names where the Census Bureau's differ.
+    state_codes |= {"Northern Mariana Islands": "MP", "Virgin Islands": "VI"}
+    rows = [r for m in await api.current_members(settings.congress_number) if (r := _roster_row(m, state_codes))]
+    if not rows:
+        return 0
+    await db.execute(update(Legislator).values(in_office=False))
+    stmt = insert(Legislator).values(rows)
+    # Members already stored keep their Congress.gov detail names and synced photos.
+    keep = {"bioguide_id", "full_name", "first_name", "last_name", "image_url"}
+    await db.execute(stmt.on_conflict_do_update(
+        index_elements=[Legislator.bioguide_id],
+        set_={c: stmt.excluded[c] for c in rows[0] if c not in keep}
+        | {"image_url": func.coalesce(Legislator.image_url, stmt.excluded.image_url)},
+    ))
+    await db.commit()
+    return len(rows)
+
+
+STATE_CODES = [
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS",
+    "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC",
+    "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+    "AS", "GU", "MP", "PR", "VI",
+]
 
 
 def career(terms: list[dict], current: bool) -> list[dict]:

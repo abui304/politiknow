@@ -3,11 +3,11 @@ from dataclasses import dataclass
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import case, exists, func, or_, select
+from sqlalchemy import case, delete, exists, func, literal_column, or_, select
 
 from app.config import settings
 from app.deps import DB, CurrentUser, RedisDep
-from app.models import Bill, BillCosponsor, InteractionType, Legislator, SummaryReport, Vote
+from app.models import Bill, BillCosponsor, BillFollow, InteractionType, Legislator, SummaryReport, Vote
 from app.ratelimit import enforce_hourly_limit
 from app.schemas import (
     BillOut,
@@ -39,6 +39,14 @@ STAGES = {
     "vetoed": Bill.status == "vetoed",
 }
 Stage = Literal["law", "president", "senate", "house", "committee", "vetoed"]
+
+TS_CONFIG = literal_column("'english'::regconfig")
+# Matches in a search snippet are wrapped in these control characters, which never occur in bill text.
+MARK_START, MARK_END = "\x02", "\x03"
+SNIPPET_OPTIONS = (
+    f'MaxFragments=2, MaxWords=22, MinWords=10, FragmentDelimiter=" … ", StartSel={MARK_START}, StopSel={MARK_END}'
+)
+SNIPPET_TEXT_CHARS = 100_000  # ts_headline re-parses the text, so keep it to the start of long bills
 
 
 async def _published_bill(db, bill_id: uuid.UUID) -> Bill:
@@ -79,6 +87,15 @@ class BillFilters:
     def term(self) -> str:
         return (self.q or "").strip().lstrip("#").strip()
 
+    @property
+    def tsquery(self):
+        """The search words as a Postgres full-text query ("quoted phrases" and -excluded words work)."""
+        return func.websearch_to_tsquery(TS_CONFIG, self.term)
+
+    def text_match(self):
+        """Matches the words in the title, either summary, or the full text (stemmed, so "taxes" finds "tax")."""
+        return Bill.search_vector.op("@@")(self.tsquery)
+
     def title_or_hashtag(self):
         """Matches `term` in the title or a hashtag; these rank above name matches."""
         pattern = like_pattern(self.term)
@@ -102,6 +119,7 @@ class BillFilters:
             named = select(Legislator.bioguide_id).where(name_matches(pattern))
             conds.append(or_(
                 self.title_or_hashtag(),
+                self.text_match(),
                 Bill.sponsor_name.ilike(pattern, escape="\\"),
                 Bill.sponsor_id.in_(named),
                 Bill.id.in_(select(BillCosponsor.bill_id).where(BillCosponsor.bioguide_id.in_(named))),
@@ -122,9 +140,21 @@ async def stage_counts(db: DB, _: CurrentUser, filters: Filters):
 
 
 @router.get("/feed", response_model=BillPage)
-async def get_feed(db: DB, redis: RedisDep, user: CurrentUser, cursor: int = 0, limit: int = Query(20, le=50)):
-    bills, next_cursor = await feed_service.page(db, redis, user, cursor, limit)
-    return BillPage(items=await bills_out(db, user, bills), next_cursor=next_cursor)
+async def get_feed(
+    db: DB,
+    redis: RedisDep,
+    user: CurrentUser,
+    sort: Literal["for_you", "discussed"] = "for_you",
+    cursor: int = 0,
+    limit: int = Query(20, le=50),
+):
+    """"for_you": the personalized ranking. "discussed": most comments this week. Each bill says why it's here."""
+    if sort == "discussed":
+        bills, reasons, next_cursor = await feed_service.most_discussed(db, cursor, limit)
+    else:
+        bills, reasons, next_cursor = await feed_service.page(db, redis, user, cursor, limit)
+    extra = {bill_id: {"reason": why} for bill_id, why in reasons.items()}
+    return BillPage(items=await bills_out(db, user, bills, extra), next_cursor=next_cursor)
 
 
 @router.get("/search", response_model=BillPage)
@@ -137,14 +167,16 @@ async def search(
     limit: int = Query(20, le=50),
 ):
     """Filter by topic, hashtag (exact, case-insensitive), sponsor's party, chamber, and/or status, and/or
-    match words in the title, any hashtag, or a sponsor's or cosponsor's name. Title and hashtag
-    matches rank above name matches."""
+    match words in the title, any hashtag, either summary, the full text, or a sponsor's or cosponsor's
+    name. Title and hashtag matches rank first, then the best full-text matches, then name matches.
+    Bills matched by their summaries or text come with a `snippet` showing where."""
     stmt = select(Bill).where(*filters.conditions())
     if stage:
         stmt = stmt.where(STAGES[stage])
     if filters.term:
         stmt = stmt.order_by(
             case((filters.title_or_hashtag(), 0), else_=1),
+            func.ts_rank_cd(Bill.search_vector, filters.tsquery).desc(),
             func.similarity(Bill.title, filters.term).desc(),
             Bill.last_action_date.desc().nulls_last(),
         )
@@ -152,7 +184,25 @@ async def search(
         stmt = stmt.order_by(Bill.last_action_date.desc().nulls_last())
     bills = list(await db.scalars(stmt.offset(cursor).limit(limit + 1)))
     next_cursor = cursor + limit if len(bills) > limit else None
-    return BillPage(items=await bills_out(db, user, bills[:limit]), next_cursor=next_cursor)
+    page = bills[:limit]
+    extra = await _snippets(db, filters, [b.id for b in page]) if filters.term and page else {}
+    return BillPage(items=await bills_out(db, user, page, extra), next_cursor=next_cursor)
+
+
+async def _snippets(db, filters: BillFilters, ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
+    """Passages from the summaries or full text where the search words appear, for bills that matched there."""
+    body = (
+        func.coalesce(Bill.summary_detailed, "") + " … "
+        + func.left(func.coalesce(Bill.full_text, ""), SNIPPET_TEXT_CHARS)
+    )
+    rows = await db.execute(
+        select(Bill.id, func.ts_headline(TS_CONFIG, body, filters.tsquery, SNIPPET_OPTIONS))
+        .where(Bill.id.in_(ids), filters.text_match())
+    )
+    return {
+        bill_id: {"snippet": " ".join(text.split())}
+        for bill_id, text in rows if text and MARK_START in text
+    }
 
 
 @router.get("/bills/{bill_id}", response_model=BillOut)
@@ -196,6 +246,21 @@ async def vote(bill_id: uuid.UUID, body: VoteIn, db: DB, redis: RedisDep, user: 
         interactions.record(db, user, bill, InteractionType.vote)
     await db.commit()
     return VoteOut(net_score=bill.net_score, my_vote=body.value)
+
+
+@router.post("/bills/{bill_id}/follow", status_code=status.HTTP_204_NO_CONTENT)
+async def follow_bill(bill_id: uuid.UUID, db: DB, user: CurrentUser):
+    """Alerts when the bill moves (status-change alerts), without voting or commenting."""
+    bill = await _published_bill(db, bill_id)
+    if not await db.get(BillFollow, (user.id, bill.id)):
+        db.add(BillFollow(user_id=user.id, bill_id=bill.id))
+        await db.commit()
+
+
+@router.delete("/bills/{bill_id}/follow", status_code=status.HTTP_204_NO_CONTENT)
+async def unfollow_bill(bill_id: uuid.UUID, db: DB, user: CurrentUser):
+    await db.execute(delete(BillFollow).where(BillFollow.user_id == user.id, BillFollow.bill_id == bill_id))
+    await db.commit()
 
 
 @router.post("/bills/{bill_id}/report-summary", status_code=status.HTTP_204_NO_CONTENT)

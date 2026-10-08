@@ -2,10 +2,10 @@ import uuid
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 
 from app.deps import DB, CurrentUser
-from app.models import Bill, BillCosponsor, Legislator
+from app.models import Bill, BillCosponsor, Legislator, LegislatorFollow
 from app.routers.bills import _published_bill
 from app.schemas import BillPage, CosponsorOut, LegislatorBase, LegislatorOut
 from app.serializers import bills_out
@@ -68,12 +68,31 @@ async def list_legislators(
 
 
 @router.get("/legislators/{bioguide_id}", response_model=LegislatorOut)
-async def get_legislator(bioguide_id: str, db: DB, _: CurrentUser):
+async def get_legislator(bioguide_id: str, db: DB, user: CurrentUser):
     stmt, _s, _c = _with_counts()
     row = (await db.execute(stmt.where(Legislator.bioguide_id == bioguide_id))).first()
     if not row:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Legislator not found")
-    return _out(row)
+    following = bool(await db.get(LegislatorFollow, (user.id, bioguide_id)))
+    return _out(row).model_copy(update={"is_following": following})
+
+
+@router.post("/legislators/{bioguide_id}/follow", status_code=status.HTTP_204_NO_CONTENT)
+async def follow_legislator(bioguide_id: str, db: DB, user: CurrentUser):
+    """Alerts when they sponsor or cosponsor a bill, and their bills ranked up in the feed."""
+    if not await db.get(Legislator, bioguide_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Legislator not found")
+    if not await db.get(LegislatorFollow, (user.id, bioguide_id)):
+        db.add(LegislatorFollow(user_id=user.id, bioguide_id=bioguide_id))
+        await db.commit()
+
+
+@router.delete("/legislators/{bioguide_id}/follow", status_code=status.HTTP_204_NO_CONTENT)
+async def unfollow_legislator(bioguide_id: str, db: DB, user: CurrentUser):
+    await db.execute(delete(LegislatorFollow).where(
+        LegislatorFollow.user_id == user.id, LegislatorFollow.bioguide_id == bioguide_id
+    ))
+    await db.commit()
 
 
 @router.get("/legislators/{bioguide_id}/bills", response_model=BillPage)
