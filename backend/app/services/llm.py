@@ -1,4 +1,4 @@
-"""GPT-4o-mini summarization, tagging, and comment moderation (spec 2.2, 2.3, 7.1, 14.2).
+"""GPT-6 Luna summarization, tagging, and comment moderation (spec 2.2, 2.3, 7.1, 14.2).
 
 Without OPENAI_API_KEY the app still runs: summaries fall back to an excerpt of the bill
 text (clearly labeled), tagging falls back to the official policy area, and moderation is skipped.
@@ -60,7 +60,6 @@ async def _chat(system: str, user: str, *, json_mode: bool = False) -> str:
     resp = await client.chat.completions.create(
         model=settings.openai_model,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        temperature=0.3,
         response_format={"type": "json_object"} if json_mode else None,
     )
     return (resp.choices[0].message.content or "").strip()

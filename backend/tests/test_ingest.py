@@ -1,10 +1,12 @@
 """Ingestion against a fake Congress API (no network, no OpenAI)."""
 
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy import select
 
 from app.config import settings
-from app.models import Bill, Notification
-from app.services.ingest import run_ingestion
+from app.models import Bill, IngestState, Notification
+from app.services.ingest import LOCK_STALE, RUNNING_SINCE, run_ingestion
 from tests.conftest import signup
 
 
@@ -112,3 +114,19 @@ async def test_capped_runs_resume_without_skipping_or_repeating(db, monkeypatch)
     await run_ingestion(db, api)
     assert api.listed_calls[-1][0] == api.listed_calls[0][1]
     assert api.listed_calls[-1][2] == 0
+
+
+async def test_only_one_ingestion_runs_at_a_time(db):
+    db.add(IngestState(key=RUNNING_SINCE, value=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")))
+    await db.commit()
+    assert await run_ingestion(db, FakeCongress()) == {"skipped": "ingestion already running"}
+    assert not await db.scalar(select(Bill))
+
+
+async def test_stale_lock_is_taken_over_and_released(db):
+    stale = datetime.now(UTC) - LOCK_STALE - timedelta(minutes=1)
+    db.add(IngestState(key=RUNNING_SINCE, value=stale.strftime("%Y-%m-%dT%H:%M:%SZ")))
+    await db.commit()
+    result = await run_ingestion(db, FakeCongress())
+    assert "skipped" not in result
+    assert await db.get(IngestState, RUNNING_SINCE) is None

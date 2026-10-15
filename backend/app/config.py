@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     congress_api_key: str = "DEMO_KEY"
     congress_number: int = 119
     openai_api_key: str = ""
-    openai_model: str = "gpt-4o-mini"
+    openai_model: str = "gpt-6-luna"
 
     # Ingestion (spec 3.3)
     ingest_times_utc: list[int] = [6, 12, 18, 23]  # hours of day, 4x daily

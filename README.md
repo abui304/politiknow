@@ -128,12 +128,14 @@ A background job runs **4 times a day** (06:00, 12:00, 18:00, 23:00 UTC). It can
 
 1. Asks Congress.gov for bills in the current Congress (119th) updated in a time window, **oldest first**.
 2. Fetches each bill's details (sponsor, party, policy area), its **actions** (only when there's a new latest action) to build its timeline, its **cosponsors** (only when their count has changed), and its **latest full text**. A bill's status is the furthest step it has reached, so it never slides back (e.g. to In committee when a House-passed bill is referred to a Senate committee).
-3. If the text is new or changed, makes three GPT-4o-mini calls: simple summary, detailed summary, and topics + hashtags. Unchanged text is **never re-summarized**.
+3. If the text is new or changed, makes three GPT-6 Luna calls: simple summary, detailed summary, and topics + hashtags. Unchanged text is **never re-summarized**.
 4. Publishes the bill and sends alerts to people who follow its topics (and status-change alerts to people who engaged with it).
 
 5. Fetches photos, years in office, and office details for any new sponsors and cosponsors, and refreshes existing legislators monthly (up to `INGEST_MAX_MEMBERS_PER_RUN` per run, free Congress.gov calls).
 
 Bills without published text yet stay hidden and are retried on later runs.
+
+Only one ingestion runs at a time. A manual `ingest` started while the worker is already ingesting (or the reverse) skips with `{"skipped": "ingestion already running"}`. If a run crashes, its lock expires after 3 hours.
 
 Each run handles up to `INGEST_MAX_BILLS_PER_RUN` bills (default 50) to cap OpenAI spend. If more bills were updated than that, the next run **resumes exactly where the last one stopped**, and the output's `backlog_remaining` shows how much is left. Only after the backlog is cleared does it move on to newer updates.
 

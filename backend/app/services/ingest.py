@@ -6,6 +6,7 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import timeline
@@ -22,6 +23,12 @@ WINDOW_TO = "window_to"
 WINDOW_OFFSET = "window_offset"
 LAST_DONE = "caught_up_through"  # everything updated before this has been ingested
 ROSTER_SYNCED = "roster_synced_at"
+# Only one ingestion runs at a time (e.g. the worker's scheduled run and a manual `cli ingest`), or
+# both insert the same new bills and pay to summarize them twice. The lock is a row rather than a
+# Postgres advisory lock so it also works behind transaction-mode poolers (Supabase, PgBouncer).
+# A run that crashes without releasing it is taken over once the lock is older than LOCK_STALE.
+RUNNING_SINCE = "running_since"
+LOCK_STALE = timedelta(hours=3)
 ROSTER_REFRESH = timedelta(days=7)
 # Congress.gov's order among same-day updates can shift slightly between requests, so a resumed
 # run re-reads a few bills before its saved position. Re-reads are cheap: unchanged text is never
@@ -124,10 +131,32 @@ async def ingest_bill(
     return outcome, pushes
 
 
+async def _acquire_lock(db: AsyncSession, now: str, stale_before: str) -> bool:
+    stmt = insert(IngestState).values(key=RUNNING_SINCE, value=now)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[IngestState.key], set_={"value": now}, where=IngestState.value < stale_before
+    ).returning(IngestState.key)
+    acquired = (await db.execute(stmt)).first() is not None
+    await db.commit()
+    return acquired
+
+
 async def run_ingestion(db: AsyncSession, api: CongressClient | None = None) -> dict:
-    api = api or CongressClient()
-    now = datetime.now(UTC)
     fmt = "%Y-%m-%dT%H:%M:%SZ"
+    now = datetime.now(UTC)
+    token = now.strftime(fmt)
+    if not await _acquire_lock(db, token, (now - LOCK_STALE).strftime(fmt)):
+        log.info("Ingestion already running; skipping this run")
+        return {"skipped": "ingestion already running"}
+    try:
+        return await _run_ingestion(db, api or CongressClient(), now, fmt)
+    finally:
+        await db.rollback()
+        await db.execute(delete(IngestState).where(IngestState.key == RUNNING_SINCE, IngestState.value == token))
+        await db.commit()
+
+
+async def _run_ingestion(db: AsyncSession, api: CongressClient, now: datetime, fmt: str) -> dict:
 
     # Resume an unfinished window, or open a new one from where the last window ended.
     window_from = await _get_state(db, WINDOW_FROM)
