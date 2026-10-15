@@ -126,6 +126,16 @@ async def state_map(state: str, response: Response):
     return data
 
 
+@router.get("/maps/US/{state}")
+async def national_map_detail(state: str, response: Response):
+    """One state at full detail in the national map's layout, for when the national map is zoomed in."""
+    data = district_maps.load_national_detail(state)
+    if not data:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No map for that state")
+    response.headers["Cache-Control"] = "public, max-age=86400"
+    return data
+
+
 @router.get("/bills/{bill_id}/cosponsors", response_model=list[CosponsorOut])
 async def bill_cosponsors(bill_id: uuid.UUID, db: DB, _: CurrentUser):
     """Current cosponsors: original cosponsors first, then in the order they signed on."""

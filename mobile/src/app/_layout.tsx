@@ -1,17 +1,18 @@
 import {
-  Nunito_400Regular,
-  Nunito_600SemiBold,
-  Nunito_700Bold,
-  Nunito_800ExtraBold,
-  Nunito_900Black,
+  Merriweather_400Regular,
+  Merriweather_600SemiBold,
+  Merriweather_700Bold,
+  Merriweather_800ExtraBold,
+  Merriweather_900Black,
   useFonts,
-} from '@expo-google-fonts/nunito';
+} from '@expo-google-fonts/merriweather';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { Toaster } from '@/components/ui';
@@ -32,11 +33,11 @@ const queryClient = new QueryClient({
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
-    Nunito_400Regular,
-    Nunito_600SemiBold,
-    Nunito_700Bold,
-    Nunito_800ExtraBold,
-    Nunito_900Black,
+    Merriweather_400Regular,
+    Merriweather_600SemiBold,
+    Merriweather_700Bold,
+    Merriweather_800ExtraBold,
+    Merriweather_900Black,
   });
   const { hydrated, hydrate, accessToken, stage } = useAuth();
 
@@ -57,6 +58,7 @@ export default function RootLayout() {
   const signedIn = Boolean(accessToken);
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
         <StatusBar style="dark" />
@@ -83,6 +85,8 @@ export default function RootLayout() {
                 <Stack.Screen name="settings" />
                 <Stack.Screen name="calendar" />
                 <Stack.Screen name="state/[code]" />
+                <Stack.Screen name="state-map/[code]" />
+                <Stack.Screen name="map" />
               </Stack.Protected>
             </Stack>
             <Toaster />
@@ -90,6 +94,7 @@ export default function RootLayout() {
         </View>
       </SafeAreaProvider>
     </QueryClientProvider>
+    </GestureHandlerRootView>
   );
 }
 

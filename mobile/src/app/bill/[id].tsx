@@ -8,6 +8,7 @@ import { BillTimeline } from '@/components/BillTimeline';
 import { CommentsSection } from '@/components/Comments';
 import { BouncyPressable, Button, Card, Chip, Empty, Field, Icon, Loading, Screen, TopBar, Txt } from '@/components/ui';
 import { api } from '@/lib/api';
+import { plainText } from '@/lib/format';
 import { useBill, useBillText } from '@/lib/queries';
 import { shareBill } from '@/lib/share';
 import { toast, toastError } from '@/lib/toast';
@@ -40,7 +41,8 @@ export default function BillDetail() {
   }
 
   const p = partyColors(bill.sponsor_party);
-  const summary = level === 'simple' ? bill.summary_simple : bill.summary_detailed;
+  const raw = level === 'simple' ? bill.summary_simple : bill.summary_detailed;
+  const summary = raw ? plainText(raw) : raw;
   const sponsorId = bill.sponsor_id;
   const sponsor = bill.sponsor_label ?? bill.sponsor_name;
   const openCongress = () => bill.congress_url && WebBrowser.openBrowserAsync(bill.congress_url);

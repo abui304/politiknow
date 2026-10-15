@@ -80,7 +80,10 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
   - **Privacy:** your location is sent once, in the request body (so it never lands in server logs), matched against the district boundaries, and thrown away. Only your state and district number are stored, and they're never shown on your public profile.
   - The lookup uses full-detail Census boundaries (accurate to about 10 m) on the server, so it needs no map service.
 - **Your map:** the whole country with district lines, in the usual layout with Alaska, Hawaii, and Puerto Rico as insets and the small Northeast states and DC called out on the side. Your district is filled in mint, and districts you follow in lilac, each with a pin so even tiny city districts show up.
-  - **Tap a state** to open its district map with city labels. **Tap a district** (or a city, or a row in the list underneath) to see who represents it, open their page, **follow the district**, or make it your district.
+  - **Tap the map** to open it full screen. **Pinch to zoom** and drag to move around (or use the + / − buttons, which is also how zoom works on web). Lines and labels redraw sharp at any zoom.
+  - **Tap a state** to zoom in on it, then **tap a district** to follow it (or open its district page with city labels). Tapping a district on any map asks whether to follow it.
+  - Zoomed in, the states on screen switch to full-detail boundaries (coastlines, rivers, city districts), loaded on demand so the overview stays small.
+  - On a state's map, **tap a district** (or a city, or a row in the list underneath) to see who represents it, open their page, **follow the district**, or make it your district. The **expand** button opens that map full screen too, with more city labels, zoom, and the district's card underneath, which makes small city districts easy to pick.
   - **Districts you follow** (where you grew up, a swing seat...) are listed under the map.
 - **Following:** the legislators and bills you follow.
 - "Who represents a district" comes from Congress.gov's list of current members, refreshed weekly by ingestion (also `sync-roster`), so it includes members who haven't sponsored anything yet.
@@ -117,7 +120,7 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
 - Hidden comments stay visible to their author, marked as hidden.
 
 ### Looks
-- Cozy cream background with chunky outlines and "sticker" shadows, line icons, and the Nunito font.
+- Cozy cream background with chunky outlines and "sticker" shadows, line icons, and the Merriweather serif font to match the logo.
 - On a desktop browser the app shows as a centered, phone-width column.
 
 ---
@@ -263,7 +266,7 @@ backend/app/
   routers/          API endpoints (auth, users, bills, legislators, places, comments, notifications, calendar)
   services/         ingestion, Congress.gov client, AI, feed ranking, trending,
                     hashtags, legislators, district maps, floor schedule, moderation, notifications
-  data/maps/        pre-drawn state and district maps (one JSON file per state, plus US.json)
+  data/maps/        pre-drawn state and district maps (one JSON file per state, plus US.json and national/)
   data/district_bounds.json  district boundaries for finding a user's district from their location
   worker.py         background job schedule
   cli.py            manual commands
@@ -280,7 +283,7 @@ mobile/src/
 ## Notes
 
 - **Existing databases:** after `alembic upgrade head`, run `backfill-cosponsors`, `backfill-timelines`, and then `sync-members` once, so bills ingested earlier get their sponsors and cosponsors linked and their timelines built, and every legislator gets a photo and office details. New ingestion keeps them current.
-- **District maps and the location lookup** reflect boundaries at the start of the 119th Congress. If states redraw districts, rerun `build-maps` once the Census Bureau publishes new files (update the file names in `services/district_maps.py`). It writes the per-state maps, the national map (`maps/US.json`, from the coarser 1:20m files), and `district_bounds.json` (full detail, about 9 MB, used only on the server).
+- **District maps and the location lookup** reflect boundaries at the start of the 119th Congress. If states redraw districts, rerun `build-maps` once the Census Bureau publishes new files (update the file names in `services/district_maps.py`). It writes the per-state maps, the national map (`maps/US.json`, from the coarser 1:20m files), full-detail national pieces per state (`maps/national/`, loaded by the app for the states in view when the national map is zoomed in), and `district_bounds.json` (full detail, about 9 MB, used only on the server).
 - **After pulling these changes:** run `alembic upgrade head` (adds follows, home districts, and full-text search; the search index is built for existing bills automatically) and `sync-roster` once so "Your representatives" works before the next ingestion run.
 - **Schema changes:** edit `backend/app/models.py`, then run `alembic revision --autogenerate -m "..."` and `alembic upgrade head`.
 - **Design:** the UI uses line icons only, no emoji. Bill cards keep the full party colors.

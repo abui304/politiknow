@@ -4,6 +4,7 @@ import {
   useInfiniteQuery,
   useMutation,
   useQuery,
+  useQueries,
   useQueryClient,
 } from '@tanstack/react-query';
 
@@ -25,6 +26,7 @@ import type {
   Legislator,
   LegislatorRole,
   Me,
+  NationalDetail,
   NationalMap,
   NotificationPrefs,
   PartyFilter,
@@ -60,6 +62,7 @@ export const keys = {
     ['legislators', q, party, chamber] as const,
   legislator: (id: string) => ['legislator', id] as const,
   stateMap: (state: string) => ['stateMap', state] as const,
+  nationalDetail: (state: string) => ['stateMap', 'US', state] as const,
   legislatorBills: (id: string, role: LegislatorRole) => ['legislatorBills', id, role] as const,
   billText: (id: string) => ['bill', id, 'text'] as const,
   comments: (billId: string) => ['comments', billId] as const,
@@ -192,6 +195,18 @@ export const useFollowing = () =>
 /** The nationwide map; static, like the state maps. */
 export const useNationalMap = () =>
   useQuery({ queryKey: keys.stateMap('US'), queryFn: () => api<NationalMap>('/maps/US'), staleTime: Infinity });
+
+/** Full-detail boundaries for these states, keyed by state, as each one loads. */
+export const useNationalDetail = (states: string[]) =>
+  useQueries({
+    queries: states.map((state) => ({
+      queryKey: keys.nationalDetail(state),
+      queryFn: () => api<NationalDetail>(`/maps/US/${state}`),
+      staleTime: Infinity,
+    })),
+    combine: (results) =>
+      Object.fromEntries(results.flatMap((r, i) => (r.data ? [[states[i], r.data]] : []))) as Record<string, NationalDetail>,
+  });
 
 export const useStateDistricts = (state: string | null | undefined) =>
   useQuery({

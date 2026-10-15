@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { shortDate, truncate } from '@/lib/format';
+import { plainText, shortDate, truncate } from '@/lib/format';
 import { useFollowBill, useVoteBill } from '@/lib/queries';
 import { shareBill } from '@/lib/share';
 import { toastError } from '@/lib/toast';
@@ -125,7 +125,7 @@ export function BillCard({ bill }: { bill: Bill }) {
           {bill.snippet ? <Snippet text={bill.snippet} color={p.main} /> : null}
           {bill.summary_simple && !bill.snippet ? (
             <Txt style={[type.body, { marginTop: space.sm, color: colors.inkSoft }]}>
-              {truncate(bill.summary_simple, 240)} <Text style={{ fontFamily: fonts.extrabold, color: p.main }}>Read more</Text>
+              {truncate(plainText(bill.summary_simple), 240)} <Text style={{ fontFamily: fonts.extrabold, color: p.main }}>Read more</Text>
             </Txt>
           ) : null}
           <View style={styles.tags}>

@@ -6,7 +6,9 @@ import { svgPress } from '@/lib/svg';
 import type { StateMap } from '@/lib/types';
 import { colors, fonts, partyColors, radius, sticker } from '@/theme';
 
-type Box = [number, number, number, number]; // x0, y0, x1, y1
+import { BouncyPressable, Icon } from './ui';
+import type { Box } from './ZoomView';
+
 
 type Props = {
   map: StateMap;
@@ -34,7 +36,7 @@ function fit([x0, y0, x1, y1]: Box, pad: number): Box {
 }
 
 /** The biggest cities in view, the district's own first, skipping any that would crowd a label. */
-function pickCities(map: StateMap, view: Box, district: string | null, inset: boolean) {
+function pickCities(map: StateMap, view: Box, district: string | null, inset: boolean, maxLabels = MAX_LABELS) {
   const [x0, y0, x1, y1] = view;
   const w = x1 - x0;
   const h = y1 - y0;
@@ -48,7 +50,7 @@ function pickCities(map: StateMap, view: Box, district: string | null, inset: bo
   ];
   const picked: typeof ranked = [];
   for (const c of ranked) {
-    if (picked.length >= MAX_LABELS) break;
+    if (picked.length >= maxLabels) break;
     if (picked.every((p) => Math.abs(p.x - c.x) > w * 0.28 || Math.abs(p.y - c.y) > h * 0.1)) picked.push(c);
   }
   return picked;
@@ -136,72 +138,112 @@ function StateInset({ map, district, color, view }: { map: StateMap; district: s
 
 const styles = StyleSheet.create({
   frame: { width: '100%', backgroundColor: colors.surfaceAlt, overflow: 'hidden' },
+  expand: { position: 'absolute', right: 10, top: 10, width: 34, height: 34, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
   inset: { position: 'absolute', right: 10, bottom: 10, width: 96, aspectRatio: ASPECT, backgroundColor: colors.surface, overflow: 'hidden' },
 });
 
-type StateDistrictsMapProps = {
+type StateDistrictsSvgProps = {
   map: StateMap;
-  /** The tapped district: zoomed to (if small) and filled with its member's party color. */
+  view: Box;
+  /** On-screen width, so lines and labels stay a constant size at any zoom. */
+  px: number;
+  /** The tapped district, filled with its member's party color. */
   selected: string | null;
   selectedParty: string | null;
   home: string | null;
   following: string[];
-  onSelect: (district: string) => void;
+  onSelect?: (district: string) => void;
   homeColor: string;
   followingColor: string;
+  /** City labels to show; a full-screen map has room for more. */
+  maxLabels?: number;
 };
 
 /** A state's districts, each tappable, with your district and followed ones filled in and city labels. */
-export function StateDistrictsMap({ map, selected, selectedParty, home, following, onSelect, homeColor, followingColor }: StateDistrictsMapProps) {
-  const [px, setPx] = useState(340);
+export function StateDistrictsSvg({
+  map, view, px, selected, selectedParty, home, following, onSelect, homeColor, followingColor, maxLabels = MAX_LABELS,
+}: StateDistrictsSvgProps) {
+  const unit = (view[2] - view[0]) / px;
+  const cities = pickCities(map, view, selected, false, maxLabels);
+  const fill = (n: string) =>
+    n === selected ? partyColors(selectedParty).main : n === home ? homeColor : following.includes(n) ? followingColor : colors.surface;
+  // Selected last, so its outline sits on top of its neighbors'.
+  const order = Object.keys(map.districts).sort((a, b) => Number(a === selected) - Number(b === selected));
+  const select = (n: string | null) => (onSelect && n !== null ? () => onSelect(n) : undefined);
+
+  return (
+    <Svg width="100%" height="100%" viewBox={`${view[0]} ${view[1]} ${view[2] - view[0]} ${view[3] - view[1]}`}>
+      <Path d={map.outline} fill={colors.line} transform={`translate(${3 * unit} ${3 * unit})`} />
+      <Path d={map.outline} fill={colors.surface} />
+      {order.map((n) => (
+        <Path
+          key={n}
+          d={map.districts[n].path}
+          fill={fill(n)}
+          stroke={n === selected ? colors.line : '#BFAE96'}
+          strokeWidth={(n === selected ? 2 : 1.2) * unit}
+          strokeLinejoin="round"
+          {...svgPress(select(n))}
+        />
+      ))}
+      <Path d={map.outline} fill="none" stroke={colors.line} strokeWidth={2 * unit} strokeLinejoin="round" />
+      {cities.map((c) => {
+        const flip = c.x > view[0] + (view[2] - view[0]) * 0.62;
+        const label = { x: c.x + (flip ? -8 : 8) * unit, y: c.y + 4.5 * unit, fontSize: 13 * unit, fontFamily: fonts.extrabold, textAnchor: flip ? 'end' : 'start' } as const;
+        // Tapping a city picks its district.
+        const press = select(c.district);
+        return (
+          <G key={c.name}>
+            <Circle cx={c.x} cy={c.y} r={4 * unit} fill={colors.surface} stroke={colors.line} strokeWidth={2 * unit} {...svgPress(press)} />
+            <SvgText {...label} stroke={colors.surface} strokeWidth={3.5 * unit} strokeLinejoin="round" fill={colors.surface} {...svgPress(press)}>
+              {c.name}
+            </SvgText>
+            <SvgText {...label} fill={colors.ink} {...svgPress(press)}>
+              {c.name}
+            </SvgText>
+          </G>
+        );
+      })}
+    </Svg>
+  );
+}
+
+/** The view a state map opens at: the whole state, or a close-up when the selected district is small. */
+export function stateView(map: StateMap, selected: string | null): { view: Box; zoomed: boolean } {
   const target = selected !== null ? map.districts[selected] : undefined;
   const longSide = Math.max(map.width, map.height);
   const size = (b: Box) => Math.max(b[2] - b[0], b[3] - b[1]);
   const zoomed = Boolean(target && size(target.bbox) < longSide * ZOOM_BELOW);
   const view = zoomed && target ? fit(target.bbox, size(target.bbox) * 0.9) : fit([0, 0, map.width, map.height], longSide * 0.05);
-  const unit = (view[2] - view[0]) / px;
-  const cities = pickCities(map, view, selected, false);
-  const fill = (n: string) =>
-    n === selected ? partyColors(selectedParty).main : n === home ? homeColor : following.includes(n) ? followingColor : colors.surface;
-  // Selected last, so its outline sits on top of its neighbors'.
-  const order = Object.keys(map.districts).sort((a, b) => Number(a === selected) - Number(b === selected));
+  return { view, zoomed };
+}
+
+type StateDistrictsMapProps = Omit<StateDistrictsSvgProps, 'view' | 'px' | 'maxLabels'> & {
+  /** Opens the full-screen, zoomable map. */
+  onExpand?: () => void;
+};
+
+/** A state's district map for a page, zoomed to the selected district if it's small. */
+export function StateDistrictsMap({ onExpand, ...props }: StateDistrictsMapProps) {
+  const [px, setPx] = useState(340);
+  const { map, selected, selectedParty } = props;
+  const { view, zoomed } = stateView(map, selected);
+  const target = selected !== null ? map.districts[selected] : undefined;
 
   return (
     <View style={[styles.frame, sticker(3, radius.lg), { aspectRatio: ASPECT }]} onLayout={(e) => setPx(e.nativeEvent.layout.width || px)}>
-      <Svg width="100%" height="100%" viewBox={`${view[0]} ${view[1]} ${view[2] - view[0]} ${view[3] - view[1]}`}>
-        <Path d={map.outline} fill={colors.line} transform={`translate(${3 * unit} ${3 * unit})`} />
-        <Path d={map.outline} fill={colors.surface} />
-        {order.map((n) => (
-          <Path
-            key={n}
-            d={map.districts[n].path}
-            fill={fill(n)}
-            stroke={n === selected ? colors.line : '#BFAE96'}
-            strokeWidth={(n === selected ? 2 : 1.2) * unit}
-            strokeLinejoin="round"
-            {...svgPress(() => onSelect(n))}
-          />
-        ))}
-        <Path d={map.outline} fill="none" stroke={colors.line} strokeWidth={2 * unit} strokeLinejoin="round" />
-        {cities.map((c) => {
-          const flip = c.x > view[0] + (view[2] - view[0]) * 0.62;
-          const label = { x: c.x + (flip ? -8 : 8) * unit, y: c.y + 4.5 * unit, fontSize: 13 * unit, fontFamily: fonts.extrabold, textAnchor: flip ? 'end' : 'start' } as const;
-          // Tapping a city picks its district.
-          const press = c.district !== null ? () => onSelect(c.district as string) : undefined;
-          return (
-            <G key={c.name}>
-              <Circle cx={c.x} cy={c.y} r={4 * unit} fill={colors.surface} stroke={colors.line} strokeWidth={2 * unit} {...svgPress(press)} />
-              <SvgText {...label} stroke={colors.surface} strokeWidth={3.5 * unit} strokeLinejoin="round" fill={colors.surface} {...svgPress(press)}>
-                {c.name}
-              </SvgText>
-              <SvgText {...label} fill={colors.ink} {...svgPress(press)}>
-                {c.name}
-              </SvgText>
-            </G>
-          );
-        })}
-      </Svg>
+      <StateDistrictsSvg {...props} view={view} px={px} />
       {zoomed && target ? <StateInset map={map} district={target.path} color={partyColors(selectedParty).main} view={view} /> : null}
+      {onExpand ? (
+        <BouncyPressable
+          onPress={onExpand}
+          accessibilityRole="button"
+          accessibilityLabel="Open a full-screen map you can zoom"
+          hitSlop={8}
+          style={[styles.expand, sticker(2, radius.sm)]}>
+          <Icon name="maximize-2" size={16} />
+        </BouncyPressable>
+      ) : null}
     </View>
   );
 }

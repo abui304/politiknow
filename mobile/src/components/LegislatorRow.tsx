@@ -35,7 +35,7 @@ export function LegislatorRow({ legislator: l, note }: Props) {
         <Txt style={type.bodyBold} numberOfLines={1}>
           {l.name}
         </Txt>
-        <Txt style={type.small} numberOfLines={1}>
+        <Txt style={type.small} numberOfLines={2}>
           {p.label} · {legislatorPlace(l)}
         </Txt>
         {note ? (

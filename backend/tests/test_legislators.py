@@ -193,3 +193,15 @@ async def test_state_maps(client):
     assert (await client.get("/maps/WY")).json()["districts"].keys() == {"0"}  # at-large
     assert (await client.get("/maps/ZZ")).status_code == 404
     assert (await client.get("/maps/..")).status_code == 404
+
+
+async def test_national_map_detail(client):
+    us = (await client.get("/maps/US")).json()
+    r = await client.get("/maps/US/WA")
+    assert r.status_code == 200
+    detail = r.json()
+    # Same districts as the overview, in the same coordinates (Washington is in the map's top-left).
+    assert detail["districts"].keys() == {k for k in us["districts"] if k.startswith("WA-")}
+    x, y = (float(v) for v in detail["outline"][1:].replace("L", " ").split()[:2])
+    assert 120 < x < 240 and 0 < y < 95
+    assert (await client.get("/maps/US/ZZ")).status_code == 404

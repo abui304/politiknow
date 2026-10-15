@@ -101,7 +101,7 @@ export function MyMapCard() {
           map={map}
           home={home ? key(home) : null}
           following={(districts ?? []).map(key)}
-          onPressState={(code) => openState(code)}
+          onExpand={() => router.push('/map')}
         />
       ) : (
         <View style={[styles.mapPlaceholder, sticker(3, radius.lg)]}>

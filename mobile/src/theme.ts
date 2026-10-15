@@ -38,16 +38,17 @@ export function partyColors(code?: string | null) {
 export const radius = { sm: 10, md: 16, lg: 22, pill: 999 };
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 };
 
+/** Merriweather: a sturdy serif to match the logo's lettering. */
 export const fonts = {
-  regular: 'Nunito_400Regular',
-  semibold: 'Nunito_600SemiBold',
-  bold: 'Nunito_700Bold',
-  extrabold: 'Nunito_800ExtraBold',
-  black: 'Nunito_900Black',
+  regular: 'Merriweather_400Regular',
+  semibold: 'Merriweather_600SemiBold',
+  bold: 'Merriweather_700Bold',
+  extrabold: 'Merriweather_800ExtraBold',
+  black: 'Merriweather_900Black',
 };
 
 export const type: Record<string, TextStyle> = {
-  // Explicit lineHeight: without one, Nunito Black's tallest glyphs (e.g. "@") draw above the box on phones.
+  // Explicit lineHeight: without one, the heaviest weight's tallest glyphs (e.g. "@") draw above the box on phones.
   title: { fontFamily: fonts.black, fontSize: 28, lineHeight: 36, color: colors.ink, letterSpacing: -0.3 },
   h2: { fontFamily: fonts.extrabold, fontSize: 20, color: colors.ink },
   h3: { fontFamily: fonts.extrabold, fontSize: 16, color: colors.ink },

@@ -1,11 +1,12 @@
 import { Platform, Share } from 'react-native';
 
+import { plainText } from './format';
 import { toast } from './toast';
 import type { Bill } from './types';
 
 export async function shareBill(bill: Bill) {
   const url = bill.congress_url ?? 'https://www.congress.gov';
-  const text = `${bill.label}: ${bill.title}\n\n${(bill.summary_simple ?? '').slice(0, 200)}…\n\nvia PolitiKNOW`;
+  const text = `${bill.label}: ${bill.title}\n\n${plainText(bill.summary_simple ?? '').slice(0, 200)}…\n\nvia PolitiKNOW`;
   const message = `${text} · ${url}`;
   try {
     if (Platform.OS === 'web') {

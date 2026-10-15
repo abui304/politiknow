@@ -61,3 +61,15 @@ export function timeAgo(iso: string): string {
 export function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
 }
+
+/** AI summaries sometimes come back as Markdown; shows them as plain text: no **bold**, # headings,
+ *  `code` or [link](url) syntax, and "- " / "* " bullets become "• ". Numbered lists are kept as is. */
+export function plainText(md: string): string {
+  return md
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^(\s*)[-*+]\s+/gm, '$1• ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/(^|[^\w*])[*_]([^*_\n]+)[*_](?=[^\w*]|$)/g, '$1$2')
+    .replace(/`([^`]+)`/g, '$1');
+}

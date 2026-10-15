@@ -133,6 +133,13 @@ export type NationalMap = {
   districts: Record<string, string>;
 };
 
+/** /maps/US/{state}: one state at full detail, in the national map's coordinates (for zooming in). */
+export type NationalDetail = {
+  outline: string;
+  /** Keyed "WA-8". */
+  districts: Record<string, string>;
+};
+
 export type District = {
   state: string;
   district: number;

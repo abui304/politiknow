@@ -11,7 +11,9 @@ District "0" is an at-large seat or a non-voting delegate's whole territory.
 
 `build_national()` writes US.json, a coarser nationwide map (Census 1:20m files) in the usual
 Albers USA layout with Alaska, Hawaii, and Puerto Rico as insets: {width, height,
-states: {"WA": {name, path, label, tag}}, districts: {"WA-8": path}}.
+states: {"WA": {name, path, label, tag}}, districts: {"WA-8": path}}. It also writes
+national/<state>.json, the same layout at full detail (1:500k files) one state at a time,
+{outline, districts: {"WA-8": path}}, which the app swaps in for the states in view when zoomed in.
 
 `build()` also writes district_bounds.json: every district's boundary in longitude/latitude at full
 detail, which `locate()` uses to find the district containing a point.
@@ -29,6 +31,7 @@ import httpx
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 MAPS_DIR = DATA_DIR / "maps"
+NATIONAL_DETAIL_DIR = MAPS_DIR / "national"
 BOUNDS_FILE = DATA_DIR / "district_bounds.json"
 CENSUS = "https://www2.census.gov/geo/tiger/GENZ2024/shp"
 CITIES_URL = (
@@ -43,6 +46,13 @@ MAX_CITIES = 30
 def load(state: str) -> dict | None:
     """A state's map, or the national map for "US". Cached: the files only change on a rebuild."""
     path = MAPS_DIR / f"{state.upper()}.json"
+    return json.loads(path.read_text()) if state.isalpha() and path.exists() else None
+
+
+@lru_cache(maxsize=64)
+def load_national_detail(state: str) -> dict | None:
+    """One state's full-detail outline and districts in the national map's coordinates."""
+    path = NATIONAL_DETAIL_DIR / f"{state.upper()}.json"
     return json.loads(path.read_text()) if state.isalpha() and path.exists() else None
 
 
@@ -283,6 +293,11 @@ def build_national(out_dir: Path = MAPS_DIR) -> None:
             for rec, geom in _shapes(_download(f"{CENSUS}/cb_2024_us_state_20m.zip", tmp / "s.zip"))
         }
         cds = list(_shapes(_download(f"{CENSUS}/cb_2024_us_cd119_20m.zip", tmp / "cd.zip")))
+        detail_states = [
+            (rec["STATEFP"], rec["STUSPS"], geom)
+            for rec, geom in _shapes(_download(f"{CENSUS}/cb_2024_us_state_500k.zip", tmp / "s500.zip"))
+        ]
+        detail_cds = list(_shapes(_download(f"{CENSUS}/cb_2024_us_cd119_500k.zip", tmp / "cd500.zip")))
 
     def to_view(code, geom):
         return transform(_national_projection(code), transform(_unwrap, geom))
@@ -321,3 +336,22 @@ def build_national(out_dir: Path = MAPS_DIR) -> None:
 
     data = {"width": NATIONAL_W, "height": NATIONAL_H, "states": out_states, "districts": out_districts}
     (out_dir / "US.json").write_text(json.dumps(data, separators=(",", ":")))
+
+    # Full detail, per state, for zooming in. 0.05 map units is under half a pixel at the app's max zoom.
+    detail_dir = out_dir / "national"
+    detail_dir.mkdir(exist_ok=True)
+    codes = {fp: code for fp, code, _ in detail_states}
+    detail: dict[str, dict] = {
+        code: {"outline": _path(to_view(code, geom).simplify(0.05, preserve_topology=True)), "districts": {}}
+        for _, code, geom in detail_states
+        if code in out_states
+    }
+    for rec, geom in detail_cds:
+        code = codes.get(rec["STATEFP"])
+        if code not in detail:
+            continue
+        number = int(rec["CD119FP"]) if rec["CD119FP"] not in ("98", "ZZ") else 0
+        path = _path(to_view(code, geom).simplify(0.05, preserve_topology=True))
+        detail[code]["districts"][f"{code}-{number}"] = path
+    for code, d in detail.items():
+        (detail_dir / f"{code}.json").write_text(json.dumps(d, separators=(",", ":")))
