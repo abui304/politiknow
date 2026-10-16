@@ -47,3 +47,12 @@ async def get_current_user(user: Annotated[User, Depends(get_user_allow_incomple
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
 IncompleteUser = Annotated[User, Depends(get_user_allow_incomplete)]
+
+
+async def get_moderator(user: CurrentUser) -> User:
+    if not user.is_moderator:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Moderators only")
+    return user
+
+
+Moderator = Annotated[User, Depends(get_moderator)]

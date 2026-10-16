@@ -66,6 +66,8 @@ class User(Base):
     is_premium: Mapped[bool] = mapped_column(Boolean, default=False)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     is_shadow_banned: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Can use the moderation dashboard; granted with `cli make-moderator`.
+    is_moderator: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     push_token: Mapped[str | None] = mapped_column(String(255))
     # The user's own congressional district. Private: never shown on their public profile, and found
     # from their location without storing it (see routers/places.py). District 0 = at-large/delegate.
@@ -239,6 +241,8 @@ class Comment(Base):
     net_score: Mapped[int] = mapped_column(Integer, default=0)
     is_flagged: Mapped[bool] = mapped_column(Boolean, default=False)
     is_hidden: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Last moderator decision. Only reports filed after it count toward auto-hiding or re-queue the comment.
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
 
     user: Mapped[User] = relationship(lazy="joined")

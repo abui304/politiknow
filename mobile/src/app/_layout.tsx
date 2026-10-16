@@ -87,6 +87,7 @@ export default function RootLayout() {
                 <Stack.Screen name="state/[code]" />
                 <Stack.Screen name="state-map/[code]" />
                 <Stack.Screen name="map" />
+                <Stack.Screen name="moderation" />
               </Stack.Protected>
             </Stack>
             <Toaster />

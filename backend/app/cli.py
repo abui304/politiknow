@@ -9,6 +9,8 @@
   python -m app.cli sync-members  # refresh every legislator's photo, career, and office (free)
   python -m app.cli sync-roster   # mark who's serving now, adding members with no bills yet (free)
   python -m app.cli build-maps    # rebuild app/data/maps from Census boundaries (free; dev requirements)
+  python -m app.cli make-moderator <display_name>    # give someone the moderation dashboard
+  python -m app.cli remove-moderator <display_name>
 """
 
 import asyncio
@@ -163,7 +165,17 @@ async def backfill_timelines(db) -> None:
     await _for_each_bill(db, update)
 
 
-async def main(cmd: str) -> None:
+async def set_moderator(db, display_name: str, value: bool) -> None:
+    user = await db.scalar(select(User).where(User.display_name == display_name))
+    if not user:
+        print(f"No user named {display_name!r}.")
+        return
+    user.is_moderator = value
+    await db.commit()
+    print(f"{display_name} is {'now' if value else 'no longer'} a moderator.")
+
+
+async def main(cmd: str, *args: str) -> None:
     if cmd == "build-maps":
         from app.services import district_maps
         print(f"Wrote {district_maps.build()} state maps to {district_maps.MAPS_DIR}")
@@ -189,6 +201,8 @@ async def main(cmd: str) -> None:
             await backfill_cosponsors(db)
         elif cmd == "backfill-timelines":
             await backfill_timelines(db)
+        elif cmd in ("make-moderator", "remove-moderator") and len(args) == 1:
+            await set_moderator(db, args[0], cmd == "make-moderator")
         elif cmd in ("sync-members", "sync-roster"):
             from app.services import legislators
             from app.services.congress import CongressClient
@@ -206,4 +220,4 @@ async def main(cmd: str) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main(sys.argv[1] if len(sys.argv) > 1 else ""))
+    asyncio.run(main(*(sys.argv[1:] or [""])))

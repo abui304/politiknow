@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, Switch, View } from 'react-native';
 
@@ -89,6 +90,17 @@ function SettingsForm({ me }: { me: Me }) {
         </Row>
         {quiet ? <QuietHoursEditor value={quiet} onSave={(q) => setPrefsAndSave({ ...prefs, quiet_hours: q })} /> : null}
       </Section>
+
+      {me.is_moderator ? (
+        <Section title="Moderation" subtitle="Review flagged comments, shadow bans, and summary reports.">
+          <Button
+            title="Open moderation dashboard"
+            icon="shield"
+            variant="secondary"
+            onPress={() => router.push('/moderation')}
+          />
+        </Section>
+      ) : null}
 
       <Section title="Account">
         <Txt style={type.small}>Signed in {me.email ? `as ${me.email}` : `with ${me.auth_provider}`}</Txt>

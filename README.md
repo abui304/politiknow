@@ -118,6 +118,11 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
 - **Repeat offenders** (3 hidden comments) are shadow-banned: their comments are visible only to themselves.
 - **Rate limits:** 10 comments and 100 votes per user per hour. New accounts can comment after 1 hour (set to 0 in local `.env` for testing).
 - Hidden comments stay visible to their author, marked as hidden.
+- **Moderator dashboard** (Settings > Moderation, moderators only):
+  - **Comments:** a "Needs review" queue of comments that were flagged (by the AI or the duplicate check) or reported, with report counts by category. Moderators can keep a comment up, restore a hidden one, or hide it. After a review, only new reports count: a comment that was kept up goes back in the queue on its next report, and 3 new reports hide it again. The "Hidden" view lists every hidden comment so it can be restored.
+  - **Summaries:** open reports on AI summaries, grouped by bill. Mark them resolved, or regenerate the bill's summaries (two OpenAI calls, needs a key), which also resolves them.
+  - **Users:** shadow-banned users, plus search by display name to shadow-ban someone or lift a ban.
+  - Make someone a moderator with `cli make-moderator <display_name>`.
 
 ### Looks
 - Cozy cream background with chunky outlines and "sticker" shadows, line icons, and the Merriweather serif font to match the logo.
@@ -204,6 +209,7 @@ Run from `backend/`:
 | `.venv/bin/python -m app.cli sync-members` | Refresh every legislator's photo, years in office, and office details (ingestion also does up to 100 per run, monthly per member) | Free (Congress.gov only) |
 | `.venv/bin/python -m app.cli sync-roster` | Mark who's serving now from Congress.gov's current-member list (ingestion also does this weekly) | Free (Congress.gov only) |
 | `.venv/bin/python -m app.cli build-maps` | Rebuild the state, national, and district-lookup maps in `backend/app/data/` (needs `requirements-dev.txt`) | Free |
+| `.venv/bin/python -m app.cli make-moderator <display_name>` | Give a user the moderator dashboard (`remove-moderator` takes it away) | Free |
 | `.venv/bin/python -m app.cli seed-demo` | Add 6 sample (older) bills and demo users, for UI work without API keys | Free without an OpenAI key |
 
 Demo logins after `seed-demo`: `civic_owl@example.com` / `politiknow123` (also `ballot_bunny`, `policy_panda`).
@@ -241,7 +247,6 @@ The full list is in `backend/app/config.py`.
 
 - **Apple sign-in and iOS push:** need a paid Apple Developer account.
 - **Password reset and real email:** verification links are only printed to the API log; no email provider is set up.
-- **Moderator dashboard:** flagged comments (`comments.is_flagged`) and summary reports (`summary_reports`) are only in the database.
 - **Editing comments, deleting accounts.**
 - **Ads and premium subscription** (spec Phase 3).
 - **State and local bills, filtering the feed by location:** planned in spec section 12.1.

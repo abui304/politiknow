@@ -29,6 +29,7 @@ export type Me = {
   /** Private: the user's own district (0 = at-large or delegate). */
   home_state: string | null;
   home_district: number | null;
+  is_moderator: boolean;
   created_at: string;
 };
 
@@ -212,3 +213,57 @@ export type AppNotification = {
 export type Tag = { name: string };
 
 export type Hashtag = { name: string; bill_count: number };
+
+// ---------- moderation dashboard ----------
+
+export type ModQueue = 'pending' | 'hidden';
+
+export type ReportCategory = 'harassment' | 'spam' | 'misinformation' | 'other';
+
+export type ModComment = {
+  id: string;
+  bill_id: string;
+  bill_label: string;
+  bill_title: string;
+  parent_comment_id: string | null;
+  author_id: string;
+  author_name: string;
+  author_shadow_banned: boolean;
+  author_hidden_count: number;
+  body: string;
+  net_score: number;
+  is_flagged: boolean;
+  is_hidden: boolean;
+  reviewed_at: string | null;
+  /** Reports filed since the last moderator review. */
+  report_count: number;
+  /** All reports, by category. */
+  report_categories: Partial<Record<ReportCategory, number>>;
+  created_at: string;
+};
+
+export type ModUser = {
+  id: string;
+  display_name: string;
+  is_shadow_banned: boolean;
+  comment_count: number;
+  hidden_count: number;
+  report_count: number;
+  created_at: string;
+};
+
+export type SummaryReport = {
+  id: string;
+  reporter_name: string;
+  feedback: string | null;
+  created_at: string;
+};
+
+export type SummaryReportGroup = {
+  bill_id: string;
+  bill_label: string;
+  bill_title: string;
+  summary_simple: string | null;
+  summary_detailed: string | null;
+  reports: SummaryReport[];
+};

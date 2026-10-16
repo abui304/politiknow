@@ -46,6 +46,11 @@ HASHTAG_GUIDANCE = (
 NEUTRALITY = " Stay strictly neutral: do not take a side or describe the bill as good or bad."
 
 
+def enabled() -> bool:
+    """False in no-key mode, where summaries are labeled excerpts instead."""
+    return bool(settings.openai_api_key)
+
+
 def _client() -> AsyncOpenAI | None:
     return AsyncOpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else None
 

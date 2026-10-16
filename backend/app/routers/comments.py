@@ -4,12 +4,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
 from app.deps import DB, CurrentUser, RedisDep
-from app.models import Bill, Comment, CommentReport, CommentVote, InteractionType, User
+from app.models import Bill, Comment, CommentReport, CommentVote, InteractionType
 from app.ratelimit import enforce_hourly_limit
 from app.routers.bills import _published_bill
 from app.schemas import CommentIn, CommentOut, ReportIn, VoteIn, VoteOut
@@ -28,15 +28,6 @@ def _enqueue(task_name: str, comment_id: uuid.UUID) -> None:
         getattr(worker, task_name).delay(str(comment_id))
     except Exception:
         log.exception("Could not enqueue %s for comment %s", task_name, comment_id)
-
-
-async def _recount(db, bill: Bill) -> None:
-    banned = select(User.id).where(User.is_shadow_banned.is_(True))
-    bill.comment_count = await db.scalar(
-        select(func.count()).where(
-            Comment.bill_id == bill.id, Comment.is_hidden.is_(False), Comment.user_id.not_in(banned)
-        )
-    ) or 0
 
 
 @router.get("/bills/{bill_id}/comments", response_model=list[CommentOut])
@@ -84,7 +75,7 @@ async def create_comment(bill_id: uuid.UUID, body: CommentIn, db: DB, redis: Red
     db.add(comment)
     interactions.record(db, user, bill, InteractionType.comment)
     await db.flush()
-    await _recount(db, bill)
+    await moderation.recount_comments(db, bill)
     await db.commit()
     await db.refresh(comment, ["user"])
 
@@ -101,7 +92,7 @@ async def delete_comment(comment_id: uuid.UUID, db: DB, user: CurrentUser):
     bill = await db.get(Bill, comment.bill_id)
     await db.delete(comment)
     await db.flush()
-    await _recount(db, bill)
+    await moderation.recount_comments(db, bill)
     await db.commit()
 
 

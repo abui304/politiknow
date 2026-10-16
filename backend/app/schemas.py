@@ -79,6 +79,7 @@ class MeOut(BaseModel):
     # Private to the user: their district, from their location or picked on the map.
     home_state: str | None
     home_district: int | None
+    is_moderator: bool = False
     created_at: datetime
 
 
@@ -344,3 +345,52 @@ class HashtagOut(BaseModel):
 class StageOut(BaseModel):
     key: str  # a /search?stage= value
     bill_count: int
+
+
+# ---------- moderation dashboard ----------
+
+
+class ModCommentOut(BaseModel):
+    id: uuid.UUID
+    bill_id: uuid.UUID
+    bill_label: str
+    bill_title: str
+    parent_comment_id: uuid.UUID | None
+    author_id: uuid.UUID
+    author_name: str
+    author_shadow_banned: bool
+    author_hidden_count: int
+    body: str
+    net_score: int
+    is_flagged: bool
+    is_hidden: bool
+    reviewed_at: datetime | None
+    report_count: int  # filed since the last review
+    report_categories: dict[str, int]  # all reports, by category
+    created_at: datetime
+
+
+class ModUserOut(BaseModel):
+    id: uuid.UUID
+    display_name: str
+    is_shadow_banned: bool
+    comment_count: int
+    hidden_count: int
+    report_count: int  # reports against any of their comments
+    created_at: datetime
+
+
+class SummaryReportOut(BaseModel):
+    id: uuid.UUID
+    reporter_name: str
+    feedback: str | None
+    created_at: datetime
+
+
+class SummaryReportGroup(BaseModel):
+    bill_id: uuid.UUID
+    bill_label: str
+    bill_title: str
+    summary_simple: str | None
+    summary_detailed: str | None
+    reports: list[SummaryReportOut]

@@ -33,6 +33,7 @@ async def _me(db, user: User) -> MeOut:
         following_count=following,
         home_state=user.home_state,
         home_district=user.home_district,
+        is_moderator=user.is_moderator,
         created_at=user.created_at,
     )
 

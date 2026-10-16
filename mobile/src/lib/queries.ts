@@ -26,6 +26,9 @@ import type {
   Legislator,
   LegislatorRole,
   Me,
+  ModComment,
+  ModQueue,
+  ModUser,
   NationalDetail,
   NationalMap,
   NotificationPrefs,
@@ -36,6 +39,7 @@ import type {
   StageFilter,
   StateDistricts,
   StateMap,
+  SummaryReportGroup,
   Tag,
 } from './types';
 
@@ -74,6 +78,9 @@ export const keys = {
   myDistricts: ['districts', 'mine'] as const,
   representatives: ['representatives'] as const,
   calendar: ['calendar'] as const,
+  modComments: (view: ModQueue) => ['moderation', 'comments', view] as const,
+  modUsers: (q: string) => ['moderation', 'users', q] as const,
+  modSummaries: ['moderation', 'summaries'] as const,
 };
 
 // ---------- reads ----------
@@ -371,4 +378,53 @@ export function useSetHome() {
       refreshPlaces(qc);
     },
   });
+}
+
+// ---------- moderation dashboard ----------
+
+export const useModComments = (view: ModQueue) =>
+  useQuery({ queryKey: keys.modComments(view), queryFn: () => api<ModComment[]>(`/moderation/comments?view=${view}`) });
+
+/** Shadow-banned users, or (with `q`) anyone whose display name starts with it. */
+export const useModUsers = (q: string) =>
+  useQuery({
+    queryKey: keys.modUsers(q),
+    queryFn: () => api<ModUser[]>(`/moderation/users?q=${encodeURIComponent(q)}`),
+  });
+
+export const useModSummaries = () =>
+  useQuery({ queryKey: keys.modSummaries, queryFn: () => api<SummaryReportGroup[]>('/moderation/summary-reports') });
+
+export function useModActions() {
+  const qc = useQueryClient();
+  // Every action can change what's in each tab, a bill's comment list, or its comment count.
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ['moderation'] });
+    qc.invalidateQueries({ queryKey: ['comments'] });
+    qc.invalidateQueries({ queryKey: ['bill'] });
+  };
+  return {
+    approve: useMutation({
+      mutationFn: (id: string) => api(`/moderation/comments/${id}/approve`, { method: 'POST' }),
+      onSuccess: refresh,
+    }),
+    hide: useMutation({
+      mutationFn: (id: string) => api(`/moderation/comments/${id}/hide`, { method: 'POST' }),
+      onSuccess: refresh,
+    }),
+    shadowBan: useMutation({
+      mutationFn: ({ userId, banned }: { userId: string; banned: boolean }) =>
+        api(`/moderation/users/${userId}/shadow-ban`, { method: banned ? 'PUT' : 'DELETE' }),
+      onSuccess: refresh,
+    }),
+    resolveSummary: useMutation({
+      mutationFn: (billId: string) => api(`/moderation/bills/${billId}/summary-reports/resolve`, { method: 'POST' }),
+      onSuccess: refresh,
+    }),
+    regenerateSummary: useMutation({
+      mutationFn: (billId: string) =>
+        api<SummaryReportGroup>(`/moderation/bills/${billId}/regenerate-summary`, { method: 'POST' }),
+      onSuccess: refresh,
+    }),
+  };
 }
