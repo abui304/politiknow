@@ -19,7 +19,7 @@ export default function MyProfile() {
         followers={me.follower_count}
         following={me.following_count}
         joined={me.created_at}
-        actions={<Button title="Settings" icon="settings" variant="secondary" small onPress={() => router.push('/settings')} />}
+        actions={<Button title="Edit settings" icon="settings" variant="secondary" small onPress={() => router.push('/settings')} />}
         extra={
           <>
             <RepresentativesCard />
@@ -27,11 +27,18 @@ export default function MyProfile() {
             <FollowingCard />
             <Card style={{ gap: space.md }}>
               <Txt style={type.h3}>My topics</Txt>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {me.onboarding_tags.map((t) => (
-                  <Chip key={t} label={t} />
-                ))}
-              </View>
+              {me.onboarding_tags.length ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
+                  {me.onboarding_tags.map((t) => (
+                    <Chip key={t} label={t} small />
+                  ))}
+                </View>
+              ) : (
+                <>
+                  <Txt style={type.small}>None yet. Picking a few makes your feed about what you care about.</Txt>
+                  <Button title="Pick topics" small variant="secondary" onPress={() => router.push('/settings')} style={{ alignSelf: 'flex-start' }} />
+                </>
+              )}
             </Card>
           </>
         }

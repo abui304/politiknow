@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { Button, Card, Field, Screen, Txt } from '@/components/ui';
+import { Button, Card, Field, Screen, Title, Txt } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { NAME_RE } from '@/lib/format';
 import { useUpdateMe } from '@/lib/queries';
@@ -24,9 +24,9 @@ export default function PickName() {
 
   return (
     <Screen scroll edges={['top', 'bottom']}>
-      <Txt style={[type.title, { textAlign: 'center', marginTop: space.xxl, marginBottom: space.md }]}>Pick a display name</Txt>
+      <Title style={[type.title, { textAlign: 'center', marginTop: space.xxl, marginBottom: space.md }]}>Pick a display name</Title>
       <Txt style={[type.body, { textAlign: 'center', color: colors.inkSoft, marginBottom: space.xl }]}>
-        This is how you’ll show up in comments. Keep it anonymous — we never use your real name.
+        This is how you’ll show up in comments. Keep it anonymous, we never use your real name.
       </Txt>
       <Card style={{ gap: space.lg }}>
         <Field
@@ -36,7 +36,7 @@ export default function PickName() {
           placeholder="ballot_bunny"
           error={name && !NAME_RE.test(name) ? '3–30 letters, numbers or underscores' : undefined}
         />
-        <Button title="That’s me!" onPress={save} loading={update.isPending} disabled={!NAME_RE.test(name)} />
+        <Button title="Use this name" onPress={save} loading={update.isPending} disabled={!NAME_RE.test(name)} />
       </Card>
       <Button title="Sign out" variant="ghost" onPress={() => signOut()} style={{ marginTop: space.lg }} />
     </Screen>

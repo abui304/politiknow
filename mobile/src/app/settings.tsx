@@ -1,9 +1,10 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, Switch, View } from 'react-native';
 
 import { TopicPicker } from '@/components/TopicPicker';
-import { Button, Card, Field, Loading, Screen, TopBar, Txt } from '@/components/ui';
+import { BottomSheet, Button, Card, Field, Loading, Screen, TopBar, Txt } from '@/components/ui';
+import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { NAME_RE } from '@/lib/format';
 import { useMe, useUpdateMe } from '@/lib/queries';
@@ -27,6 +28,8 @@ export default function Settings() {
 }
 
 function SettingsForm({ me }: { me: Me }) {
+  // Opened from "Choose what to get alerts about": put the alert switches first.
+  const alertsFirst = useLocalSearchParams<{ section?: string }>().section === 'alerts';
   const update = useUpdateMe();
   const signOut = useAuth((s) => s.signOut);
 
@@ -45,9 +48,37 @@ function SettingsForm({ me }: { me: Me }) {
   const quiet = prefs.quiet_hours;
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'America/New_York';
 
+  const notifications = (
+      <Section title="Notifications" subtitle="At most 5 a day. Changes save as soon as you flip a switch.">
+        {(Object.keys(TYPE_LABELS) as NotificationType[]).map((t) => (
+          <Row key={t} label={TYPE_LABELS[t]}>
+            <Switch
+              value={prefs.types[t] ?? true}
+              onValueChange={(v) => setPrefsAndSave({ ...prefs, types: { ...prefs.types, [t]: v } })}
+              trackColor={{ true: colors.ink, false: colors.hairline }}
+              thumbColor={colors.surface}
+              {...({ activeThumbColor: colors.surface } as object)}
+            />
+          </Row>
+        ))}
+        <Row label="Quiet hours">
+          <Switch
+            value={Boolean(quiet)}
+            onValueChange={(v) => setPrefsAndSave({ ...prefs, quiet_hours: v ? { start: '22:00', end: '08:00', tz } : null })}
+            trackColor={{ true: colors.ink, false: colors.hairline }}
+              thumbColor={colors.surface}
+              {...({ activeThumbColor: colors.surface } as object)}
+          />
+        </Row>
+        {quiet ? <QuietHoursEditor value={quiet} onSave={(q) => setPrefsAndSave({ ...prefs, quiet_hours: q })} /> : null}
+      </Section>
+  );
+
   return (
     <Screen scroll>
       <TopBar title="Settings" />
+
+      {alertsFirst ? notifications : null}
 
       <Section title="Display name">
         <Field value={name} onChangeText={setName} autoCapitalize="none" error={name && !NAME_RE.test(name) ? '3–30 letters, numbers or underscores' : undefined} />
@@ -60,39 +91,21 @@ function SettingsForm({ me }: { me: Me }) {
         />
       </Section>
 
-      <Section title="My topics" subtitle={`${topics.length}/10 picked — these shape your feed.`}>
+      <Section title="My topics" subtitle={topics.length ? `${topics.length} of 10 picked. These shape your feed` : 'None picked. Your feed shows what’s recent and trending'}>
         <TopicPicker selected={topics} onChange={setTopics} />
         <Button
           small
           title="Save topics"
-          disabled={topics.length < 5 || topics.join() === me.onboarding_tags.join()}
+          disabled={topics.join() === me.onboarding_tags.join()}
           onPress={() => save({ onboarding_tags: topics }, 'Topics saved — your feed will update')}
           style={{ alignSelf: 'flex-start' }}
         />
       </Section>
 
-      <Section title="Notifications" subtitle="Max 5 a day, so we never get annoying.">
-        {(Object.keys(TYPE_LABELS) as NotificationType[]).map((t) => (
-          <Row key={t} label={TYPE_LABELS[t]}>
-            <Switch
-              value={prefs.types[t] ?? true}
-              onValueChange={(v) => setPrefsAndSave({ ...prefs, types: { ...prefs.types, [t]: v } })}
-              trackColor={{ true: colors.mint, false: colors.hairline }}
-            />
-          </Row>
-        ))}
-        <Row label="Quiet hours">
-          <Switch
-            value={Boolean(quiet)}
-            onValueChange={(v) => setPrefsAndSave({ ...prefs, quiet_hours: v ? { start: '22:00', end: '08:00', tz } : null })}
-            trackColor={{ true: colors.lilac, false: colors.hairline }}
-          />
-        </Row>
-        {quiet ? <QuietHoursEditor value={quiet} onSave={(q) => setPrefsAndSave({ ...prefs, quiet_hours: q })} /> : null}
-      </Section>
+      {alertsFirst ? null : notifications}
 
       {me.is_moderator ? (
-        <Section title="Moderation" subtitle="Review flagged comments, shadow bans, and summary reports.">
+        <Section title="Moderation" subtitle="Review flagged comments, shadow bans and summary reports">
           <Button
             title="Open moderation dashboard"
             icon="shield"
@@ -105,8 +118,46 @@ function SettingsForm({ me }: { me: Me }) {
       <Section title="Account">
         <Txt style={type.small}>Signed in {me.email ? `as ${me.email}` : `with ${me.auth_provider}`}</Txt>
         <Button title="Sign out" icon="log-out" variant="secondary" onPress={() => signOut()} />
+        <Button title="Privacy and how we stay neutral" icon="shield" variant="ghost" onPress={() => router.push('/about')} />
+        <DeleteAccount />
       </Section>
     </Screen>
+  );
+}
+
+/** Permanently deletes the account and everything in it, after a second, explicit confirmation. */
+function DeleteAccount() {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const signOut = useAuth((s) => s.signOut);
+  const remove = async () => {
+    setBusy(true);
+    try {
+      await api('/users/me', { method: 'DELETE' });
+      await signOut(false);
+    } catch (e) {
+      toastError(e);
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <Button title="Delete my account" icon="trash-2" variant="ghost" onPress={() => setConfirming(true)} />
+      <BottomSheet
+        visible={confirming}
+        title="Delete your account?"
+        onClose={() => setConfirming(false)}
+        footer={
+          <View style={{ gap: space.sm, marginTop: space.lg }}>
+            <Button title="Delete my account forever" variant="danger" loading={busy} onPress={remove} />
+            <Button title="Keep my account" variant="secondary" onPress={() => setConfirming(false)} />
+          </View>
+        }>
+        <Txt style={type.body}>
+          This removes your account, your comments, votes, follows and alerts, and your saved district. It can’t be undone.
+        </Txt>
+      </BottomSheet>
+    </>
   );
 }
 
@@ -139,7 +190,7 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
   return (
     <Card style={{ gap: space.md, marginBottom: space.lg }}>
       <View>
-        <Txt style={type.h2}>{title}</Txt>
+        <Txt style={type.h3}>{title}</Txt>
         {subtitle ? <Txt style={type.small}>{subtitle}</Txt> : null}
       </View>
       {children}
@@ -150,12 +201,12 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <View style={styles.row}>
-      <Txt style={[type.bodyBold, { flex: 1 }]}>{label}</Txt>
+      <Txt style={[type.body, { flex: 1 }]}>{label}</Txt>
       {children}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: 4 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.xs },
 });

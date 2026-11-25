@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { randomUUID } from 'expo-crypto';
 import { Platform } from 'react-native';
 
 import { useAuth } from './auth';
@@ -60,7 +61,22 @@ async function refreshTokens(): Promise<boolean> {
   }
 }
 
-type Options = { method?: string; body?: unknown; auth?: boolean };
+type Options = {
+  method?: string;
+  body?: unknown;
+  auth?: boolean;
+  /**
+   * Sent as Idempotency-Key on writes. The server runs a request with a given key at most once and replays
+   * the first response for repeats, so a retry after a dropped connection can't post a comment twice.
+   * Defaults to a fresh key per call; pass one to make separate calls count as the same request.
+   */
+  idempotencyKey?: string;
+};
+
+/** A new idempotency key, for a write the caller may retry. */
+export const newRequestKey = () => randomUUID();
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function api<T = unknown>(path: string, opts: Options = {}, retried = false): Promise<T> {
   const { method = 'GET', body, auth = true } = opts;
@@ -68,22 +84,30 @@ export async function api<T = unknown>(path: string, opts: Options = {}, retried
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const token = useAuth.getState().accessToken;
   if (auth && token) headers.Authorization = `Bearer ${token}`;
+  const write = method !== 'GET';
+  if (write) headers['Idempotency-Key'] = opts.idempotencyKey ?? newRequestKey();
 
-  let res: Response;
-  try {
-    res = await fetch(`${API_URL}${path}`, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-  } catch {
-    throw new ApiError(0, errorMessage(null, 0));
+  let res: Response | undefined;
+  // A write that never got a response is retried once with the same key: the server either never saw it,
+  // or replays what it already did.
+  for (let attempt = 0; !res; attempt++) {
+    try {
+      res = await fetch(`${API_URL}${path}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        keepalive: write, // a write started as the page closes (e.g. a delete after Undo) still completes
+      });
+    } catch {
+      if (attempt >= (write ? 1 : 0)) throw new ApiError(0, errorMessage(null, 0));
+      await sleep(800);
+    }
   }
 
   // Access tokens last 15 minutes; transparently refresh once and retry.
   if (res.status === 401 && auth && !retried) {
     refreshing ??= refreshTokens().finally(() => (refreshing = null));
-    if (await refreshing) return api<T>(path, opts, true);
+    if (await refreshing) return api<T>(path, { ...opts, idempotencyKey: headers['Idempotency-Key'] }, true);
   }
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => null);

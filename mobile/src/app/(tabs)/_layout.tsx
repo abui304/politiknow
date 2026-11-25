@@ -1,16 +1,14 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
-import { type ComponentProps, useEffect } from 'react';
+import { useEffect } from 'react';
 import type { ColorValue } from 'react-native';
 
+import { Icon, type IconName } from '@/components/ui';
 import { registerForPush } from '@/lib/push';
 import { useNotifications } from '@/lib/queries';
 import { colors, fonts } from '@/theme';
 
-type IonName = ComponentProps<typeof Ionicons>['name'];
-
-function TabIcon({ name, focused, color }: { name: string; focused: boolean; color: ColorValue }) {
-  return <Ionicons name={(focused ? name : `${name}-outline`) as IonName} size={24} color={color} />;
+function TabIcon({ name, color }: { name: IconName; color: ColorValue }) {
+  return <Icon name={name} size={22} color={String(color)} />;
 }
 
 export default function TabsLayout() {
@@ -27,13 +25,13 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.ink,
         tabBarInactiveTintColor: colors.muted,
-        tabBarLabelStyle: { fontFamily: fonts.extrabold, fontSize: 11 },
+        tabBarLabelStyle: { fontFamily: fonts.medium, fontSize: 11 },
         tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopWidth: 2,
+          backgroundColor: colors.bg,
+          borderTopWidth: 1,
           borderTopColor: colors.line,
           height: 64,
-          paddingTop: 6,
+          paddingTop: 8,
         },
         sceneStyle: { backgroundColor: colors.bg },
       }}>
@@ -43,12 +41,12 @@ export default function TabsLayout() {
         name="notifications"
         options={{
           title: 'Alerts',
-          tabBarIcon: (p) => <TabIcon name="notifications" {...p} />,
+          tabBarIcon: (p) => <TabIcon name="bell" {...p} />,
           tabBarBadge: unread ? unread : undefined,
-          tabBarBadgeStyle: { backgroundColor: colors.red, fontFamily: fonts.extrabold },
+          tabBarBadgeStyle: { backgroundColor: colors.ink, color: '#fff', fontFamily: fonts.medium, fontSize: 11 },
         }}
       />
-      <Tabs.Screen name="profile" options={{ title: 'Me', tabBarIcon: (p) => <TabIcon name="person" {...p} /> }} />
+      <Tabs.Screen name="profile" options={{ title: 'Me', tabBarIcon: (p) => <TabIcon name="user" {...p} /> }} />
     </Tabs>
   );
 }

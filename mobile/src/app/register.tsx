@@ -1,14 +1,14 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { View } from 'react-native';
+import { useRef, useState } from 'react';
+import { StyleSheet, TextInput, View } from 'react-native';
 
-import { Button, Card, Field, Screen, TopBar, Txt } from '@/components/ui';
+import { Button, Card, Field, Screen, Title, TopBar, Txt } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { NAME_RE } from '@/lib/format';
 import { toastError } from '@/lib/toast';
 import type { Tokens } from '@/lib/types';
-import { colors, space, type } from '@/theme';
+import { colors, fonts, space, type } from '@/theme';
 
 export default function Register() {
   const setTokens = useAuth((s) => s.setTokens);
@@ -16,6 +16,8 @@ export default function Register() {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
 
   const nameError = name && !NAME_RE.test(name) ? '3–30 letters, numbers or underscores' : undefined;
   const pwError = password && password.length < 8 ? 'At least 8 characters' : undefined;
@@ -38,24 +40,54 @@ export default function Register() {
 
   return (
     <Screen scroll>
-      <TopBar title="Join PolitiKNOW" />
-      <Txt style={[type.title, { marginVertical: space.lg }]}>Let’s get you set up</Txt>
+      <TopBar />
+      <Title style={{ marginTop: space.md, marginBottom: space.xl }}>Create your account</Title>
       <Card style={{ gap: space.lg }}>
+        <View style={{ gap: space.sm }}>
+          <Field
+            label="Display name"
+            value={name}
+            onChangeText={setName}
+            autoCapitalize="none"
+            autoFocus
+            returnKeyType="next"
+            onSubmitEditing={() => emailRef.current?.focus()}
+            autoComplete="username-new"
+            textContentType="nickname"
+            placeholder="civic_owl"
+            error={nameError}
+          />
+          <Txt style={type.meta}>This is what others see. Stay anonymous, no real name needed.</Txt>
+        </View>
         <Field
-          label="Display name (this is what others see)"
-          value={name}
-          onChangeText={setName}
+          label="Email"
+          value={email}
+          onChangeText={setEmail}
           autoCapitalize="none"
-          placeholder="civic_owl"
-          error={nameError}
+          keyboardType="email-address"
+          autoComplete="email"
+          textContentType="username"
+          returnKeyType="next"
+          onSubmitEditing={() => passwordRef.current?.focus()}
+          ref={emailRef}
+          placeholder="you@example.com"
         />
-        <Txt style={[type.small, { color: colors.inkSoft, marginTop: -8 }]}>
-          Stay anonymous — no need to use your real name.
-        </Txt>
-        <Field label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" autoComplete="email" placeholder="you@example.com" />
-        <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry autoComplete="new-password" placeholder="8+ characters" error={pwError} />
+        <Field
+          label="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          autoComplete="new-password"
+          textContentType="newPassword"
+          passwordRules="minlength: 8;"
+          ref={passwordRef}
+          returnKeyType="go"
+          onSubmitEditing={() => email && NAME_RE.test(name) && password.length >= 8 && submit()}
+          placeholder="8+ characters"
+          error={pwError}
+        />
         <Button
-          title="Create account"
+          title="Create my account"
           onPress={submit}
           loading={busy}
           disabled={!email || !NAME_RE.test(name) || password.length < 8}
@@ -63,9 +95,13 @@ export default function Register() {
       </Card>
       <View style={{ marginTop: space.xl, alignItems: 'center' }}>
         <Txt style={[type.small, { color: colors.inkSoft }]} onPress={() => router.replace('/login')}>
-          Have an account? <Txt style={[type.small, { color: colors.blue }]}>Sign in</Txt>
+          Have an account? <Txt style={[type.small, styles.link]}>Sign in</Txt>
         </Txt>
       </View>
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  link: { fontFamily: fonts.medium, color: colors.ink, textDecorationLine: 'underline' },
+});

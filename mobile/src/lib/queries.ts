@@ -8,7 +8,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 
-import { api } from './api';
+import { api, newRequestKey } from './api';
 import type {
   AppNotification,
   Bill,
@@ -109,6 +109,8 @@ export const useSearch = (filters: SearchFilters) =>
     initialPageParam: 0,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
     enabled: Object.values(filters).some(Boolean),
+    // Stale-while-revalidate: keep showing the last results while the next query loads, instead of a blank list.
+    placeholderData: (previous) => previous,
   });
 
 /** Legislators whose name matches `q`, most active first. */
@@ -122,6 +124,7 @@ export const useLegislators = (q: string, party: PartyFilter | null, chamber: Ch
       return api<Legislator[]>(`/legislators?${params}`);
     },
     enabled: Boolean(q),
+    placeholderData: (previous) => previous,
   });
 
 export const useLegislator = (id: string) =>
@@ -164,8 +167,37 @@ export const useStageCounts = (filters: Omit<SearchFilters, 'stage'>) =>
     placeholderData: (previous) => previous, // keep the row steady while counts refresh
   });
 
-export const useBill = (id: string) =>
-  useQuery({ queryKey: keys.bill(id), queryFn: () => api<Bill>(`/bills/${id}`) });
+/** A bill as it already appears in a loaded list (feed, search, a legislator's bills), if anywhere. */
+function billFromLists(qc: QueryClient, id: string): Bill | undefined {
+  for (const key of [keys.feed, ['search'], ['legislatorBills']]) {
+    for (const [, data] of qc.getQueriesData<InfiniteData<BillPage>>({ queryKey: key })) {
+      const hit = data?.pages?.flatMap((p) => p.items).find((b) => b.id === id);
+      if (hit) return hit;
+    }
+  }
+  return undefined;
+}
+
+/** Opening a bill from a list renders instantly from the list's copy, then refreshes it in the background. */
+export const useBill = (id: string) => {
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: keys.bill(id),
+    queryFn: () => api<Bill>(`/bills/${id}`),
+    initialData: () => billFromLists(qc, id),
+    initialDataUpdatedAt: 0, // treat the list copy as stale, so the full bill is fetched right away
+  });
+};
+
+/** Start loading a bill page before the tap finishes (on press-in), so it's usually ready when it opens. */
+export function prefetchBill(qc: QueryClient, id: string) {
+  qc.prefetchQuery({ queryKey: keys.bill(id), queryFn: () => api<Bill>(`/bills/${id}`), staleTime: 30_000 });
+  qc.prefetchQuery({
+    queryKey: [...keys.comments(id), 'top'],
+    queryFn: () => api<Comment[]>(`/bills/${id}/comments?sort=top`),
+    staleTime: 30_000,
+  });
+}
 
 export const useBillText = (id: string, enabled: boolean) =>
   useQuery({
@@ -250,21 +282,72 @@ function patchBill(qc: QueryClient, id: string, patch: Partial<Bill>) {
   qc.setQueryData<Bill>(keys.bill(id), (b) => b && { ...b, ...patch });
 }
 
+/** Optimistic: the arrow and score change on tap; a failed request puts them back. */
 export function useVoteBill() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, value }: { id: string; value: -1 | 0 | 1 }) =>
+    mutationFn: ({ id, value }: { id: string; value: -1 | 0 | 1; before: Pick<Bill, 'net_score' | 'my_vote'> }) =>
       api<{ net_score: number; my_vote: -1 | 0 | 1 }>(`/bills/${id}/vote`, { method: 'POST', body: { value } }),
+    onMutate: ({ id, value, before }) =>
+      patchBill(qc, id, { my_vote: value, net_score: before.net_score - before.my_vote + value }),
+    onError: (_e, { id, before }) => patchBill(qc, id, before),
     onSuccess: (res, { id }) => patchBill(qc, id, res),
   });
 }
 
+/** Apply a change to one comment (or reply) in every cached sort of a bill's discussion. */
+function patchComments(qc: QueryClient, billId: string, change: (list: Comment[]) => Comment[]) {
+  qc.setQueriesData<Comment[]>({ queryKey: keys.comments(billId) }, (list) => list && change(list));
+}
+
+const mapComment = (id: string, f: (c: Comment) => Comment) => (list: Comment[]): Comment[] =>
+  list.map((c) => (c.id === id ? f(c) : { ...c, replies: c.replies.map((r) => (r.id === id ? f(r) : r)) }));
+
+/**
+ * Posting shows the comment at once, marked as sending, and swaps in the server's copy when it lands.
+ * `requestKey` is the idempotency key for this comment: keep it for retries of the same text.
+ */
 export function useAddComment(billId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { body: string; parent_comment_id?: string }) =>
-      api<Comment>(`/bills/${billId}/comments`, { method: 'POST', body }),
-    onSuccess: () => {
+    mutationFn: ({ requestKey, ...body }: { body: string; parent_comment_id?: string; requestKey: string; author: string }) =>
+      api<Comment>(`/bills/${billId}/comments`, {
+        method: 'POST',
+        body: { body: body.body, parent_comment_id: body.parent_comment_id },
+        idempotencyKey: requestKey,
+      }),
+    retry: 2, // safe to retry: the same key means the server posts it at most once
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: keys.comments(billId) });
+      const pending: Comment = {
+        id: `pending-${v.requestKey}`,
+        bill_id: billId,
+        parent_comment_id: v.parent_comment_id ?? null,
+        author_id: 'me',
+        author_name: v.author,
+        body: v.body,
+        net_score: 0,
+        my_vote: 0,
+        is_mine: true,
+        is_flagged: false,
+        is_hidden: false,
+        created_at: new Date().toISOString(),
+        replies: [],
+      };
+      patchComments(qc, billId, (list) =>
+        v.parent_comment_id
+          ? list.map((c) => (c.id === v.parent_comment_id ? { ...c, replies: [...c.replies, pending] } : c))
+          : [pending, ...list],
+      );
+      patchBill(qc, billId, { comment_count: (qc.getQueryData<Bill>(keys.bill(billId))?.comment_count ?? 0) + 1 });
+    },
+    onError: (_e, v) => {
+      const gone = `pending-${v.requestKey}`;
+      patchComments(qc, billId, (list) =>
+        list.filter((c) => c.id !== gone).map((c) => ({ ...c, replies: c.replies.filter((r) => r.id !== gone) })),
+      );
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: keys.comments(billId) });
       qc.invalidateQueries({ queryKey: keys.bill(billId) });
     },
@@ -278,20 +361,31 @@ export function useCommentActions(billId: string) {
     qc.invalidateQueries({ queryKey: keys.bill(billId) });
   };
   return {
+    /** Optimistic, like bill votes. */
     vote: useMutation({
-      mutationFn: ({ id, value }: { id: string; value: -1 | 0 | 1 }) =>
+      mutationFn: ({ id, value }: { id: string; value: -1 | 0 | 1; before: Pick<Comment, 'net_score' | 'my_vote'> }) =>
         api(`/comments/${id}/vote`, { method: 'POST', body: { value } }),
-      onSuccess: refresh,
+      onMutate: ({ id, value, before }) =>
+        patchComments(qc, billId, mapComment(id, (c) => ({ ...c, my_vote: value, net_score: before.net_score - before.my_vote + value }))),
+      onError: (_e, { id, before }) => patchComments(qc, billId, mapComment(id, (c) => ({ ...c, ...before }))),
     }),
     report: useMutation({
       mutationFn: ({ id, category }: { id: string; category: string }) =>
-        api(`/comments/${id}/report`, { method: 'POST', body: { category } }),
+        api(`/comments/${id}/report`, { method: 'POST', body: { category }, idempotencyKey: `${id}:${category}:${newRequestKey()}` }),
       onSuccess: refresh,
     }),
+    /** Called after the Undo window has passed (see deferWithUndo). */
     remove: useMutation({
       mutationFn: (id: string) => api(`/comments/${id}`, { method: 'DELETE' }),
-      onSuccess: refresh,
+      onSettled: refresh,
     }),
+    /** Hide a comment locally (for the Undo window), or put back a snapshot. */
+    snapshot: () => qc.getQueriesData<Comment[]>({ queryKey: keys.comments(billId) }),
+    restore: (snap: [readonly unknown[], Comment[] | undefined][]) => snap.forEach(([key, data]) => qc.setQueryData(key, data)),
+    hideLocally: (id: string) =>
+      patchComments(qc, billId, (list) =>
+        list.filter((c) => c.id !== id).map((c) => ({ ...c, replies: c.replies.filter((r) => r.id !== id) })),
+      ),
   };
 }
 
@@ -315,9 +409,15 @@ export function useUpdateMe() {
 
 export function useFollow(userId: string) {
   const qc = useQueryClient();
+  const patch = (follow: boolean) =>
+    qc.setQueryData<Profile>(keys.profile(userId), (p) =>
+      p && p.is_following !== follow ? { ...p, is_following: follow, follower_count: p.follower_count + (follow ? 1 : -1) } : p,
+    );
   return useMutation({
     mutationFn: (follow: boolean) => api(`/users/${userId}/follow`, { method: follow ? 'POST' : 'DELETE' }),
-    onSuccess: () => {
+    onMutate: patch, // optimistic
+    onError: (_e, follow) => patch(!follow),
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: keys.profile(userId) });
       qc.invalidateQueries({ queryKey: keys.me });
     },
@@ -357,7 +457,18 @@ export function useFollowDistrict() {
   return useMutation({
     mutationFn: ({ state, district, follow }: { state: string; district: number; follow: boolean }) =>
       api(`/districts/${state}/${district}/follow`, { method: follow ? 'POST' : 'DELETE' }),
-    onSuccess: () => refreshPlaces(qc),
+    // Optimistic: flip the district in its state's list and drop it from "Districts you follow" right away.
+    onMutate: ({ state, district, follow }) => {
+      qc.setQueryData<StateDistricts>(keys.stateDistricts(state), (d) =>
+        d && { ...d, districts: d.districts.map((x) => (x.district === district ? { ...x, is_following: follow } : x)) },
+      );
+      if (!follow) {
+        qc.setQueryData<District[]>(keys.myDistricts, (list) =>
+          list?.filter((x) => !(x.state === state && x.district === district)),
+        );
+      }
+    },
+    onSettled: () => refreshPlaces(qc),
   });
 }
 

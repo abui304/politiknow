@@ -4,9 +4,9 @@ import Svg, { Circle, G, Path, Rect, Text as SvgText } from 'react-native-svg';
 
 import { svgPress } from '@/lib/svg';
 import type { StateMap } from '@/lib/types';
-import { colors, fonts, partyColors, radius, sticker } from '@/theme';
+import { colors, float, fonts, outline, partyColors, radius } from '@/theme';
 
-import { BouncyPressable, Icon } from './ui';
+import { Tap, Icon } from './ui';
 import type { Box } from './ZoomView';
 
 
@@ -71,32 +71,29 @@ export function DistrictMap({ map, district, party, compact = false }: Props) {
 
   return (
     <View
-      style={[styles.frame, compact ? sticker(2, radius.md) : sticker(3, radius.lg), { aspectRatio: ASPECT }]}
+      style={[styles.frame, compact ? outline(radius.md) : outline(radius.lg), { aspectRatio: ASPECT }]}
       onLayout={(e) => setPx(e.nativeEvent.layout.width || px)}>
       <Svg width="100%" height="100%" viewBox={`${view[0]} ${view[1]} ${view[2] - view[0]} ${view[3] - view[1]}`}>
-        {/* State: hard offset shadow, then the land. */}
-        <Path d={map.outline} fill={colors.line} transform={`translate(${3 * unit} ${3 * unit})`} />
-        <Path d={map.outline} fill={wholeState ? p.main : colors.surface} stroke={colors.line} strokeWidth={2 * unit} strokeLinejoin="round" />
+        <Path d={map.outline} fill={wholeState ? p.main : colors.surface} stroke={colors.ink} strokeWidth={1.5 * unit} strokeLinejoin="round" />
         {/* Neighboring districts, faintly outlined. */}
-        <G fill="none" stroke={wholeState ? 'rgba(255,255,255,0.45)' : '#D8C9B4'} strokeWidth={1.2 * unit} strokeLinejoin="round">
+        <G fill="none" stroke={wholeState ? 'rgba(255,255,255,0.45)' : colors.mapLine} strokeWidth={1.2 * unit} strokeLinejoin="round">
           {others.map(([n, d]) => (
             <Path key={n} d={d.path} />
           ))}
         </G>
         {target ? (
           <G>
-            <Path d={target.path} fill={colors.line} transform={`translate(${2.5 * unit} ${2.5 * unit})`} />
-            <Path d={target.path} fill={p.main} stroke={colors.line} strokeWidth={2 * unit} strokeLinejoin="round" />
+            <Path d={target.path} fill={p.main} stroke={colors.ink} strokeWidth={1.5 * unit} strokeLinejoin="round" />
           </G>
         ) : null}
         {cities.map((c) => {
           const flip = c.x > view[0] + (view[2] - view[0]) * 0.62;
           const tx = c.x + (flip ? -8 : 8) * unit;
           const ty = c.y + 4.5 * unit;
-          const label = { x: tx, y: ty, fontSize: 13 * unit, fontFamily: fonts.extrabold, textAnchor: flip ? 'end' : 'start' } as const;
+          const label = { x: tx, y: ty, fontSize: 13 * unit, fontFamily: fonts.medium, textAnchor: flip ? 'end' : 'start' } as const;
           return (
             <G key={c.name}>
-              <Circle cx={c.x} cy={c.y} r={4 * unit} fill={colors.surface} stroke={colors.line} strokeWidth={2 * unit} />
+              <Circle cx={c.x} cy={c.y} r={4 * unit} fill={colors.surface} stroke={colors.ink} strokeWidth={1.5 * unit} />
               <SvgText {...label} stroke={colors.surface} strokeWidth={3.5 * unit} strokeLinejoin="round" fill={colors.surface}>
                 {c.name}
               </SvgText>
@@ -117,9 +114,9 @@ function StateInset({ map, district, color, view }: { map: StateMap; district: s
   const box = fit([0, 0, map.width, map.height], Math.max(map.width, map.height) * 0.08);
   const u = (box[2] - box[0]) / 90;
   return (
-    <View style={[styles.inset, sticker(2, radius.md)]}>
+    <View style={[styles.inset, outline(radius.md)]}>
       <Svg width="100%" height="100%" viewBox={`${box[0]} ${box[1]} ${box[2] - box[0]} ${box[3] - box[1]}`}>
-        <Path d={map.outline} fill={colors.surfaceAlt} stroke={colors.line} strokeWidth={1.5 * u} strokeLinejoin="round" />
+        <Path d={map.outline} fill={colors.surfaceAlt} stroke={colors.ink} strokeWidth={1.5 * u} strokeLinejoin="round" />
         <Path d={district} fill={color} stroke={color} strokeWidth={1.5 * u} />
         <Rect
           x={view[0]}
@@ -127,7 +124,7 @@ function StateInset({ map, district, color, view }: { map: StateMap; district: s
           width={view[2] - view[0]}
           height={view[3] - view[1]}
           fill="none"
-          stroke={colors.line}
+          stroke={colors.ink}
           strokeWidth={1.5 * u}
           strokeDasharray={`${3 * u} ${2 * u}`}
         />
@@ -138,8 +135,8 @@ function StateInset({ map, district, color, view }: { map: StateMap; district: s
 
 const styles = StyleSheet.create({
   frame: { width: '100%', backgroundColor: colors.surfaceAlt, overflow: 'hidden' },
-  expand: { position: 'absolute', right: 10, top: 10, width: 34, height: 34, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
-  inset: { position: 'absolute', right: 10, bottom: 10, width: 96, aspectRatio: ASPECT, backgroundColor: colors.surface, overflow: 'hidden' },
+  expand: { position: 'absolute', right: 12, top: 12, width: 36, height: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
+  inset: { position: 'absolute', right: 12, bottom: 12, width: 96, aspectRatio: ASPECT, backgroundColor: colors.surface, overflow: 'hidden' },
 });
 
 type StateDistrictsSvgProps = {
@@ -173,28 +170,27 @@ export function StateDistrictsSvg({
 
   return (
     <Svg width="100%" height="100%" viewBox={`${view[0]} ${view[1]} ${view[2] - view[0]} ${view[3] - view[1]}`}>
-      <Path d={map.outline} fill={colors.line} transform={`translate(${3 * unit} ${3 * unit})`} />
       <Path d={map.outline} fill={colors.surface} />
       {order.map((n) => (
         <Path
           key={n}
           d={map.districts[n].path}
           fill={fill(n)}
-          stroke={n === selected ? colors.line : '#BFAE96'}
+          stroke={n === selected ? colors.line : colors.mapLineStrong}
           strokeWidth={(n === selected ? 2 : 1.2) * unit}
           strokeLinejoin="round"
           {...svgPress(select(n))}
         />
       ))}
-      <Path d={map.outline} fill="none" stroke={colors.line} strokeWidth={2 * unit} strokeLinejoin="round" />
+      <Path d={map.outline} fill="none" stroke={colors.ink} strokeWidth={1.5 * unit} strokeLinejoin="round" />
       {cities.map((c) => {
         const flip = c.x > view[0] + (view[2] - view[0]) * 0.62;
-        const label = { x: c.x + (flip ? -8 : 8) * unit, y: c.y + 4.5 * unit, fontSize: 13 * unit, fontFamily: fonts.extrabold, textAnchor: flip ? 'end' : 'start' } as const;
+        const label = { x: c.x + (flip ? -8 : 8) * unit, y: c.y + 4.5 * unit, fontSize: 13 * unit, fontFamily: fonts.medium, textAnchor: flip ? 'end' : 'start' } as const;
         // Tapping a city picks its district.
         const press = select(c.district);
         return (
           <G key={c.name}>
-            <Circle cx={c.x} cy={c.y} r={4 * unit} fill={colors.surface} stroke={colors.line} strokeWidth={2 * unit} {...svgPress(press)} />
+            <Circle cx={c.x} cy={c.y} r={4 * unit} fill={colors.surface} stroke={colors.ink} strokeWidth={1.5 * unit} {...svgPress(press)} />
             <SvgText {...label} stroke={colors.surface} strokeWidth={3.5 * unit} strokeLinejoin="round" fill={colors.surface} {...svgPress(press)}>
               {c.name}
             </SvgText>
@@ -231,18 +227,18 @@ export function StateDistrictsMap({ onExpand, ...props }: StateDistrictsMapProps
   const target = selected !== null ? map.districts[selected] : undefined;
 
   return (
-    <View style={[styles.frame, sticker(3, radius.lg), { aspectRatio: ASPECT }]} onLayout={(e) => setPx(e.nativeEvent.layout.width || px)}>
+    <View style={[styles.frame, outline(radius.lg), { aspectRatio: ASPECT }]} onLayout={(e) => setPx(e.nativeEvent.layout.width || px)}>
       <StateDistrictsSvg {...props} view={view} px={px} />
       {zoomed && target ? <StateInset map={map} district={target.path} color={partyColors(selectedParty).main} view={view} /> : null}
       {onExpand ? (
-        <BouncyPressable
+        <Tap
           onPress={onExpand}
           accessibilityRole="button"
           accessibilityLabel="Open a full-screen map you can zoom"
           hitSlop={8}
-          style={[styles.expand, sticker(2, radius.sm)]}>
+          style={[styles.expand, outline(radius.sm), float()]}>
           <Icon name="maximize-2" size={16} />
-        </BouncyPressable>
+        </Tap>
       ) : null}
     </View>
   );

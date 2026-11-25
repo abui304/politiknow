@@ -2,10 +2,10 @@ import { router } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { legislatorPlace } from '@/lib/format';
-import { colors, partyColors, radius, space, sticker, type } from '@/theme';
+import { colors, partyColors, radius, space, outline, type } from '@/theme';
 
 import { LegislatorPhoto } from './LegislatorPhoto';
-import { BouncyPressable, Icon, Txt } from './ui';
+import { Tap, Icon, Txt } from './ui';
 
 type Props = {
   legislator: {
@@ -16,6 +16,7 @@ type Props = {
     district: number | null;
     chamber: string | null;
     image_url: string | null;
+    image_blurhash?: string | null;
   };
   /** Extra detail under the name, e.g. "Original cosponsor". */
   note?: string;
@@ -25,30 +26,30 @@ type Props = {
 export function LegislatorRow({ legislator: l, note }: Props) {
   const p = partyColors(l.party);
   return (
-    <BouncyPressable
+    <Tap
       onPress={() => router.push({ pathname: '/legislator/[id]', params: { id: l.bioguide_id } })}
       accessibilityRole="button"
       accessibilityLabel={`${l.name}, ${p.label}, ${legislatorPlace(l)}`}
-      style={[styles.row, sticker(2, radius.md), { backgroundColor: p.soft }]}>
+      style={[styles.row, outline(radius.md)]}>
       <LegislatorPhoto legislator={l} size={40} />
       <View style={{ flex: 1 }}>
-        <Txt style={type.bodyBold} numberOfLines={1}>
+        <Txt style={type.bodyMedium} numberOfLines={1}>
           {l.name}
         </Txt>
         <Txt style={type.small} numberOfLines={2}>
           {p.label} · {legislatorPlace(l)}
         </Txt>
         {note ? (
-          <Txt style={type.tiny} numberOfLines={1}>
-            {note.toUpperCase()}
+          <Txt style={type.meta} numberOfLines={1}>
+            {note}
           </Txt>
         ) : null}
       </View>
-      <Icon name="chevron-right" size={18} color={colors.inkSoft} />
-    </BouncyPressable>
+      <Icon name="chevron-right" size={16} color={colors.muted} />
+    </Tap>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: 10, paddingHorizontal: space.md },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md, paddingHorizontal: space.md, backgroundColor: colors.surface },
 });

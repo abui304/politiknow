@@ -1,10 +1,9 @@
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import { ProfileView } from '@/components/ProfileView';
 import { Button, Empty, Loading, Screen, TopBar } from '@/components/ui';
 import { useFollow, useProfile } from '@/lib/queries';
 import { toastError } from '@/lib/toast';
-import { colors } from '@/theme';
 
 export default function UserProfile() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -16,7 +15,7 @@ export default function UserProfile() {
     return (
       <Screen>
         <TopBar />
-        <Empty icon="user-x" title="User not found" body={error?.message} />
+        <Empty icon="user-x" title="User not found" body={error?.message} action={<Button title="Back to your feed" small onPress={() => router.replace('/')} />} />
       </Screen>
     );
   }
@@ -34,10 +33,9 @@ export default function UserProfile() {
           profile.is_me ? null : (
             <Button
               small
-              title={profile.is_following ? 'Following' : 'Follow'}
+              title={profile.is_following ? 'Unfollow' : `Follow @${profile.display_name}`}
               icon={profile.is_following ? 'check' : 'user-plus'}
               variant={profile.is_following ? 'secondary' : 'primary'}
-              color={profile.is_following ? undefined : colors.red}
               loading={follow.isPending}
               onPress={() => follow.mutate(!profile.is_following, { onError: toastError })}
             />

@@ -48,7 +48,6 @@ export function FollowDistrictPrompt({ target, onClose, onOpen }: Props) {
             title={d?.is_following ? 'Unfollow district' : 'Follow district'}
             icon={d?.is_following ? 'x' : 'plus'}
             variant={d?.is_following ? 'secondary' : 'primary'}
-            color={d?.is_following ? undefined : colors.ink}
             loading={follow.isPending}
             disabled={!d}
             onPress={toggle}
@@ -69,7 +68,7 @@ export function FollowDistrictPrompt({ target, onClose, onOpen }: Props) {
       }>
       {d ? (
         <View style={{ gap: space.xs }}>
-          <Txt style={type.bodyBold}>{d.name}</Txt>
+          <Txt style={type.bodyMedium}>{d.name}</Txt>
           <Txt style={type.small}>
             {rep ? `Represented by ${rep.name} (${partyColors(rep.party).label})` : 'No current representative on record.'}
           </Txt>

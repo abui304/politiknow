@@ -97,6 +97,8 @@ export type LegislatorBase = {
   district: number | null;
   chamber: Chamber | null;
   image_url: string | null;
+  /** Placeholder drawn while the photo loads (see backend services/blurhash.py). */
+  image_blurhash?: string | null;
 };
 
 export type CareerSpan = { chamber: Chamber; start: number | null; end: number | null };
@@ -176,7 +178,7 @@ export type Cosponsor = LegislatorBase & { is_original: boolean; sponsorship_dat
 export type PartyFilter = 'D' | 'R' | 'I';
 
 /** /search?stage= values; "senate" = passed the House, Senate vote next (and vice versa). */
-export type StageFilter = 'law' | 'president' | 'senate' | 'house' | 'committee' | 'vetoed';
+export type StageFilter = 'law' | 'president' | 'senate' | 'house' | 'committee' | 'vetoed' | 'passed';
 
 export type StageCount = { key: StageFilter; bill_count: number };
 

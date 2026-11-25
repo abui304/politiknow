@@ -10,7 +10,7 @@ import { type Box, type ZoomHandle, ZoomView } from '@/components/ZoomView';
 import { keys, useMyDistricts, useNationalDetail, useNationalMap, useRepresentatives } from '@/lib/queries';
 import { pathContains } from '@/lib/svg';
 import type { NationalDetail, NationalMap } from '@/lib/types';
-import { colors, radius, space, sticker, type } from '@/theme';
+import { colors, radius, space, outline, type } from '@/theme';
 
 /** Zoom level at which taps pick a district instead of a state. */
 const DISTRICT_ZOOM = 2.5;
@@ -77,7 +77,7 @@ export default function MapScreen() {
       <View style={styles.top}>
         <TopBar title="Your map" />
       </View>
-      <View style={[styles.frame, sticker(3, radius.lg)]}>
+      <View style={[styles.frame, outline(radius.lg)]}>
         {map ? (
           <ZoomView ref={zoomRef} base={[0, 0, map.width, map.height]} maxZoom={12} onTap={onTap}>
             {(view, px, k) => <DetailedNationalMap map={map} view={view} px={px} k={k} home={home} following={following} />}
@@ -139,6 +139,6 @@ const styles = StyleSheet.create({
   top: { paddingHorizontal: space.lg },
   frame: { flex: 1, marginHorizontal: space.lg, overflow: 'hidden', backgroundColor: colors.surfaceAlt },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  legend: { flexDirection: 'row', gap: 12, paddingHorizontal: space.lg, paddingTop: space.md },
+  legend: { flexDirection: 'row', gap: space.md, paddingHorizontal: space.lg, paddingTop: space.md },
   hint: { paddingHorizontal: space.lg, paddingTop: space.xs, paddingBottom: space.md },
 });

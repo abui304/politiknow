@@ -3,10 +3,10 @@ import { StyleSheet, View } from 'react-native';
 import { useFollowDistrict, useSetHome } from '@/lib/queries';
 import { toast, toastError } from '@/lib/toast';
 import type { District } from '@/lib/types';
-import { colors, fonts, partyColors, radius, space, sticker, type } from '@/theme';
+import { partyColors, space, type } from '@/theme';
 
 import { LegislatorRow } from './LegislatorRow';
-import { Button, Card, Txt } from './ui';
+import { Button, Card, DocketTag, Txt } from './ui';
 
 /** A district's representative, with Follow and "This is my district". */
 export function DistrictCard({ district: d }: { district: District }) {
@@ -26,9 +26,7 @@ export function DistrictCard({ district: d }: { district: District }) {
   return (
     <Card style={{ gap: space.md }}>
       <View style={styles.cardHead}>
-        <View style={[styles.badge, sticker(2, radius.sm), { backgroundColor: partyColors(d.representative?.party).soft }]}>
-          <Txt style={styles.badgeText}>{d.label}</Txt>
-        </View>
+        <DocketTag label={d.label} tint={partyColors(d.representative?.party).soft} />
         <View style={{ flex: 1 }}>
           <Txt style={type.h3}>{d.name}</Txt>
           {d.is_home ? <Txt style={type.small}>Your district</Txt> : null}
@@ -43,14 +41,13 @@ export function DistrictCard({ district: d }: { district: District }) {
         <Button
           small
           icon={d.is_following ? 'check' : 'plus'}
-          title={d.is_following ? 'Following' : 'Follow district'}
+          title={d.is_following ? 'Unfollow district' : 'Follow district'}
           variant={d.is_following ? 'secondary' : 'primary'}
-          color={d.is_following ? undefined : colors.ink}
           loading={follow.isPending}
           onPress={toggleFollow}
         />
         {!d.is_home ? (
-          <Button small icon="home" title="This is my district" variant="secondary" loading={setHome.isPending} onPress={makeHome} />
+          <Button small icon="home" title="Set as my district" variant="secondary" loading={setHome.isPending} onPress={makeHome} />
         ) : null}
       </View>
     </Card>
@@ -59,7 +56,5 @@ export function DistrictCard({ district: d }: { district: District }) {
 
 const styles = StyleSheet.create({
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  badge: { paddingHorizontal: 8, paddingVertical: 4 },
-  badgeText: { fontFamily: fonts.black, fontSize: 14, color: colors.ink },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
 });

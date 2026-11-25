@@ -35,6 +35,9 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
 - A **This week on the floor** link opens the floor calendar (see below).
 - Each card is **colored by the sponsor's party** (blue Democrat, red Republican, yellow Independent) and shows the bill number, date, a **timeline** of its path through Congress (Intro, Committee, House, Senate, President, Law) with the date of each step reached, a short plain-English summary, topics, a Trending badge, votes, comment count, a **Follow** bell, and Share.
 - Pull down to refresh and re-rank.
+- **Opens instantly:** the last feed, bills and profile are saved on the device and shown at launch while fresh data loads (stale-while-revalidate). Bill pages open from the card's copy and start loading on press-in. Loading states are skeletons shaped like what's coming.
+- **Votes, follows and comments are optimistic:** they change on tap and roll back with a message if the server says no. Writes carry an `Idempotency-Key`, so a retry after a dropped connection never posts a comment twice.
+- **Undo:** deleting a comment and unfollowing show an Undo toast; deletes are only sent after the 5-second Undo window (or right away if the app is closed).
 
 ### Bill pages
 - **Simple** (about 150–250 words, no jargon) and **Detailed** (about 400–600 words) AI summaries, switchable with a toggle.
@@ -43,7 +46,8 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
 - **Follow** a bill with one tap to get an alert whenever it moves, without voting or commenting on it.
 - The bill's **timeline** with dates, its latest action (one line; tap to expand), sponsor (e.g. "Kim Schrier (D-WA-8)"), topics, and **#hashtags** (folded into a small "Hashtags (N)" pill; tap to show them). Resolutions show their shorter path (a simple resolution only needs its own chamber; concurrent resolutions skip the President), and a vetoed bill ends in Vetoed.
 - **Tap the sponsor** to open their legislator page, or tap **Cosponsors (N)** to see every current cosponsor (original cosponsors first), each linking to their own page.
-- Link to the official Congress.gov page, and a **Report inaccuracy** button with an optional note.
+- **Read on Congress.gov**, and a **Report a summary mistake** button with an optional note (once per visit).
+- On iOS 18 and later, a card's colored header zooms into the bill page.
 - Up/down voting and sharing (the phone's share sheet; on web, the browser's share menu or copy to clipboard).
 
 ### Discussion
@@ -55,10 +59,13 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
 ### Search and hashtags
 - Search bill **titles, summaries, full text, hashtags, and legislator names**. Text search uses Postgres full-text search, so "farm tax" also finds "taxes on family farms"; "quoted phrases" and -excluded words work. A name finds every bill that member sponsored or cosponsored, and matching legislators are listed above the bills.
 - Title and hashtag matches come first, then the best text matches. Bills matched by their summary or text show the **passage that matched**, with the words in bold.
-- A **status** row sits right under the search box. Each chip shows how many bills match within your other filters:
-  - **Became law**, **President's desk**, **In committee**, **Vetoed**
-  - **Awaiting Senate:** House bills that passed the House, with the Senate vote next (and **Awaiting House** the other way around). Simple resolutions never leave their own chamber, so they don't count.
-- The **Filters** button opens a sheet for **topic**, the sponsor's **party** (Democrat, Republican, Independent), and **chamber** (House, Senate), and shows how many are on. Active filters appear as removable chips under the search box.
+- **Bill numbers:** "H.R. 1037", "hr1037", "S 2209" or a bare "1037" go straight to the bill.
+- **Everyday words:** a short synonym list widens searches ("climate change" also finds "greenhouse gas" and "clean energy", "student debt" finds "student loan", "train" finds "rail"; see `backend/app/search_terms.py`). If every word together finds nothing, the search falls back to any of the words.
+- **Places:** "Iowa", "Iowa 2", "IA-2", "ohio senators" or "Arizona 3rd district" show that place's senators and House member, with a link to all its districts.
+- **Filters** (one sheet: status, sponsor's party, chamber, topic) show as removable chips under the box, with a live "Show N bills" count. Statuses: Became law, Passed at least one chamber, On the President's desk, Passed the House and waiting on the Senate (and the reverse), In committee, Vetoed.
+- **The whole search lives in the URL** (`/search?q=…&stage=…&party=…`): reload keeps it, Back undoes the last filter, and a search can be shared.
+- With nothing typed, Search shows **recent searches** (saved on the device only), **popular issues** in everyday words (Social Security, Medicare, Veterans…), where bills stand with counts, the official topics, and popular hashtags.
+- Tapping the Search tab again jumps to the top and focuses the box.
 - **Tap any #hashtag** on a bill to see every bill that shares it.
 - With nothing typed, Search shows **Popular hashtags** with how many bills use each.
 - New bills reuse existing hashtags where they fit (spelling variants merged, generic words like "Congress" dropped), so hashtags actually connect bills.
@@ -125,8 +132,10 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
   - Make someone a moderator with `cli make-moderator <display_name>`.
 
 ### Looks
-- Cozy cream background with chunky outlines and "sticker" shadows, line icons, and the Merriweather serif font to match the logo.
-- On a desktop browser the app shows as a centered, phone-width column.
+- Paper and ink: warm neutrals (one hue for every gray), hairline borders, Merriweather with tabular lining figures for numbers, and line icons. Party color lives only on bills and members, and every card also says the sponsor's party in words.
+- Continuous (squircle) corners, balanced headline line breaks, generous tap targets, and toasts and sheets that respect the notch and home indicator. Sheets can be dragged down to close.
+- On a desktop browser the app shows as a centered, phone-width column. **Keyboard:** Ctrl/⌘ K opens a command menu (pages, bills by name or number, members), `/` jumps to search, Escape closes sheets. Shortcut hints only show where there's a keyboard.
+- **Privacy and how we stay neutral** page (`/about`), linked from the welcome screen and Settings. Settings → **Delete my account** removes the account and everything in it.
 
 ---
 
@@ -208,6 +217,7 @@ Run from `backend/`:
 | `.venv/bin/python -m app.cli backfill-timelines` | Build every bill's timeline from its Congress.gov actions and reset its status | Free (Congress.gov only) |
 | `.venv/bin/python -m app.cli sync-members` | Refresh every legislator's photo, years in office, and office details (ingestion also does up to 100 per run, monthly per member) | Free (Congress.gov only) |
 | `.venv/bin/python -m app.cli sync-roster` | Mark who's serving now from Congress.gov's current-member list (ingestion also does this weekly) | Free (Congress.gov only) |
+| `.venv/bin/python -m app.cli backfill-blurhash` | Add BlurHash photo placeholders for legislators missing one (ingestion also does this for new photos) | Free (downloads each photo once) |
 | `.venv/bin/python -m app.cli build-maps` | Rebuild the state, national, and district-lookup maps in `backend/app/data/` (needs `requirements-dev.txt`) | Free |
 | `.venv/bin/python -m app.cli make-moderator <display_name>` | Give a user the moderator dashboard (`remove-moderator` takes it away) | Free |
 | `.venv/bin/python -m app.cli seed-demo` | Add 6 sample (older) bills and demo users, for UI work without API keys | Free without an OpenAI key |
@@ -290,5 +300,6 @@ mobile/src/
 - **Existing databases:** after `alembic upgrade head`, run `backfill-cosponsors`, `backfill-timelines`, and then `sync-members` once, so bills ingested earlier get their sponsors and cosponsors linked and their timelines built, and every legislator gets a photo and office details. New ingestion keeps them current.
 - **District maps and the location lookup** reflect boundaries at the start of the 119th Congress. If states redraw districts, rerun `build-maps` once the Census Bureau publishes new files (update the file names in `services/district_maps.py`). It writes the per-state maps, the national map (`maps/US.json`, from the coarser 1:20m files), full-detail national pieces per state (`maps/national/`, loaded by the app for the states in view when the national map is zoomed in), and `district_bounds.json` (full detail, about 9 MB, used only on the server).
 - **After pulling these changes:** run `alembic upgrade head` (adds follows, home districts, and full-text search; the search index is built for existing bills automatically) and `sync-roster` once so "Your representatives" works before the next ingestion run.
+- **After pulling the UI update:** run `alembic upgrade head` (adds legislator photo placeholders), then `backfill-blurhash` once. In `mobile/`, run `npm install` for the new packages (query cache persistence and AsyncStorage). Then rebuild the iOS/Android dev clients, since AsyncStorage is a native module.
 - **Schema changes:** edit `backend/app/models.py`, then run `alembic revision --autogenerate -m "..."` and `alembic upgrade head`.
 - **Design:** the UI uses line icons only, no emoji. Bill cards keep the full party colors.

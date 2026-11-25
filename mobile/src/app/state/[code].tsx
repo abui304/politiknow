@@ -7,10 +7,10 @@ import { type DistrictTarget, FollowDistrictPrompt } from '@/components/FollowDi
 import { StateDistrictsMap } from '@/components/DistrictMap';
 import { LegislatorRow } from '@/components/LegislatorRow';
 import { PLACE_COLORS } from '@/components/NationalMap';
-import { BouncyPressable, Empty, Icon, Screen, TopBar, Txt } from '@/components/ui';
+import { Button, Empty, Icon, Screen, Tap, TopBar, Txt } from '@/components/ui';
 import { useStateDistricts, useStateMap } from '@/lib/queries';
 import type { District } from '@/lib/types';
-import { colors, fonts, partyColors, radius, space, sticker, type } from '@/theme';
+import { colors, figures, fonts, outline, partyColors, radius, space, type } from '@/theme';
 
 /** A state's district map: tap a district (on the map or in the list) to see who represents it,
  *  follow it, or make it your district. Route param `district` preselects one. */
@@ -34,7 +34,7 @@ export default function StatePage() {
     return (
       <Screen>
         <TopBar />
-        <Empty icon="map" title="State not found" body={error?.message} />
+        <Empty icon="map" title="State not found" body={error?.message} action={<Button title="Open the national map" small onPress={() => router.replace('/map')} />} />
       </Screen>
     );
   }
@@ -61,7 +61,7 @@ export default function StatePage() {
             }
           />
         ) : (
-          <View style={[styles.placeholder, sticker(3, radius.lg)]}>
+          <View style={[styles.placeholder, outline(radius.lg)]}>
             {mapLoading || isLoading ? <ActivityIndicator color={colors.inkSoft} /> : null}
           </View>
         )}
@@ -88,7 +88,7 @@ export default function StatePage() {
             ))}
           </View>
         ) : null}
-        <Txt style={type.tiny}>District lines as of the start of the 119th Congress. Source: U.S. Census Bureau.</Txt>
+        <Txt style={type.meta}>District lines as of the start of the 119th Congress. Source: U.S. Census Bureau.</Txt>
       </ScrollView>
       <FollowDistrictPrompt target={prompt} onClose={() => setPrompt(null)} />
     </Screen>
@@ -99,28 +99,30 @@ function DistrictRow({ district: d, selected, onPress }: { district: District; s
   const rep = d.representative;
   const p = partyColors(rep?.party);
   return (
-    <BouncyPressable
+    <Tap
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected }}
       accessibilityLabel={`${d.name}${rep ? `, ${rep.name}, ${p.label}` : ''}`}
-      style={[styles.row, sticker(2, radius.md), selected && { backgroundColor: p.soft }]}>
-      <Txt style={[styles.rowLabel, { color: rep ? p.main : colors.muted }]}>{d.district || 'AL'}</Txt>
+      style={[styles.row, outline(radius.md), selected && { backgroundColor: p.soft }]}>
+      <View style={[styles.partyDot, { backgroundColor: rep ? p.main : colors.hairline }]} />
+      <Txt style={styles.rowLabel}>{d.district || 'AL'}</Txt>
       <View style={{ flex: 1 }}>
-        <Txt style={type.bodyBold} numberOfLines={1}>
+        <Txt style={type.bodyMedium} numberOfLines={1}>
           {rep?.name ?? 'Vacant'}
         </Txt>
         <Txt style={type.small}>{rep ? p.label : 'No current member on record'}</Txt>
       </View>
-      {d.is_home ? <Icon name="home" size={16} color={colors.success} /> : null}
+      {d.is_home ? <Icon name="home" size={16} color={colors.ink} /> : null}
       {d.is_following ? <Icon name="star" size={16} color={colors.ink} /> : null}
-    </BouncyPressable>
+    </Tap>
   );
 }
 
 const styles = StyleSheet.create({
   list: { paddingHorizontal: space.lg, paddingBottom: space.xxl, width: '100%', maxWidth: 520, alignSelf: 'center', gap: space.lg },
   placeholder: { aspectRatio: 4 / 3, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: 10, paddingHorizontal: space.md, backgroundColor: colors.surface },
-  rowLabel: { fontFamily: fonts.black, fontSize: 18, minWidth: 30, textAlign: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md, paddingHorizontal: space.md, backgroundColor: colors.surface },
+  partyDot: { width: 8, height: 8, borderRadius: 4 },
+  rowLabel: { fontFamily: fonts.medium, fontSize: 15, lineHeight: 20, minWidth: 28, color: colors.ink, ...figures },
 });

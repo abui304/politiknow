@@ -40,6 +40,15 @@ export function numericDate(ymd: string): string {
   return `${m}/${d}/${String(y).slice(2)}`;
 }
 
+/** "2025-06-12" -> "Jun 12" this year, "Jun '25" in other years: short enough for a timeline step,
+ *  and in the same month-name style as every other date in the app. */
+export function stepDate(ymd: string): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const month = date.toLocaleDateString('en-US', { month: 'short' });
+  return y === new Date().getFullYear() ? `${month} ${d}` : `${month} ’${String(y).slice(2)}`;
+}
+
 /** "2025-06-12" -> "Jun 12, 2025", read as a calendar date (no time-zone shift). */
 export function calendarDate(ymd: string): string {
   const [y, m, d] = ymd.split('-').map(Number);

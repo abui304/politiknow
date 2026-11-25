@@ -1,71 +1,110 @@
-import { router } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { useQueryClient } from '@tanstack/react-query';
+import { Link } from 'expo-router';
+import { Platform, StyleSheet, Text, View } from 'react-native';
+import type { ReactNode } from 'react';
 
 import { plainText, shortDate, truncate } from '@/lib/format';
-import { useFollowBill, useVoteBill } from '@/lib/queries';
+import { prefetchBill, useFollowBill, useVoteBill } from '@/lib/queries';
 import { shareBill } from '@/lib/share';
-import { toastError } from '@/lib/toast';
+import { toast, toastError, toastUndo } from '@/lib/toast';
 import type { Bill } from '@/lib/types';
-import { colors, fonts, partyColors, radius, space, sticker, type } from '@/theme';
+import { colors, figures, fonts, onAlpha, outline, partyColors, radius, space, type } from '@/theme';
 
 import { BillTimeline } from './BillTimeline';
-import { BouncyPressable, Chip, Icon, Txt } from './ui';
+import { Chip, Icon, Tap, Txt } from './ui';
 
-export function VoteControl({ bill, onDark = true }: { bill: Bill; onDark?: boolean }) {
+/** On iOS 18+, the card's colored header zooms into the bill page's header when the card is opened.
+ *  Elsewhere the normal page transition runs. */
+export function ZoomSource({ children }: { children: ReactNode }) {
+  // The zoom wrapper passes props to its single child, which must have a plain (not array) style.
+  return Platform.OS === 'ios' ? (
+    <Link.AppleZoom>
+      <View>{children}</View>
+    </Link.AppleZoom>
+  ) : (
+    <>{children}</>
+  );
+}
+
+/** The bill page's end of the zoom (see ZoomSource). */
+export function ZoomTarget({ children }: { children: ReactNode }) {
+  return Platform.OS === 'ios' ? (
+    <Link.AppleZoomTarget>
+      <View>{children}</View>
+    </Link.AppleZoomTarget>
+  ) : (
+    <>{children}</>
+  );
+}
+
+/** Up and down votes on a party-colored bar. The chosen arrow sits in a filled circle of the bar's text color. */
+export function VoteControl({ bill }: { bill: Bill }) {
   const vote = useVoteBill();
+  const p = partyColors(bill.sponsor_party);
   const cast = (v: -1 | 1) =>
-    vote.mutate({ id: bill.id, value: bill.my_vote === v ? 0 : v }, { onError: toastError });
-  const fg = onDark ? '#fff' : colors.ink;
+    vote.mutate(
+      { id: bill.id, value: bill.my_vote === v ? 0 : v, before: { net_score: bill.net_score, my_vote: bill.my_vote } },
+      { onError: toastError },
+    );
+  const arrow = (v: -1 | 1) => {
+    const on = bill.my_vote === v;
+    return (
+      <Tap
+        onPress={() => cast(v)}
+        accessibilityLabel={v === 1 ? 'Upvote this bill' : 'Downvote this bill'}
+        accessibilityState={{ selected: on }}
+        style={[styles.voteBtn, on && { backgroundColor: p.on }]}>
+        <Icon name={v === 1 ? 'arrow-up' : 'arrow-down'} size={18} color={on ? p.main : p.on} />
+      </Tap>
+    );
+  };
   return (
     <View style={styles.vote}>
-      <BouncyPressable
-        onPress={() => cast(1)}
-        accessibilityLabel="Upvote"
-        accessibilityState={{ selected: bill.my_vote === 1 }}
-        style={[styles.voteBtn, bill.my_vote === 1 && styles.voteOn]}>
-        <Icon name="arrow-up" size={18} color={bill.my_vote === 1 ? colors.ink : fg} />
-      </BouncyPressable>
-      <Text style={[styles.score, { color: fg }]}>{bill.net_score}</Text>
-      <BouncyPressable
-        onPress={() => cast(-1)}
-        accessibilityLabel="Downvote"
-        accessibilityState={{ selected: bill.my_vote === -1 }}
-        style={[styles.voteBtn, bill.my_vote === -1 && styles.voteOn]}>
-        <Icon name="arrow-down" size={18} color={bill.my_vote === -1 ? colors.ink : fg} />
-      </BouncyPressable>
+      {arrow(1)}
+      <Text style={[styles.score, { color: p.on }]} accessibilityLabel={`Score ${bill.net_score}`}>
+        {bill.net_score}
+      </Text>
+      {arrow(-1)}
     </View>
   );
 }
 
 /** One-tap follow: alerts when the bill moves, without voting or commenting. */
-export function FollowBillButton({ bill, onDark = true, label = false }: { bill: Bill; onDark?: boolean; label?: boolean }) {
+export function FollowBillButton({ bill }: { bill: Bill }) {
   const follow = useFollowBill();
+  const p = partyColors(bill.sponsor_party);
   const on = bill.is_following;
-  const fg = on || !onDark ? colors.ink : '#fff';
+  const fg = on ? p.main : p.on;
+  const set = (value: boolean) => follow.mutate({ id: bill.id, follow: value }, { onError: toastError });
+  const press = () => {
+    set(!on);
+    if (on) toastUndo(`Stopped alerts for ${bill.label}`, () => set(true));
+    else toast(`You’ll get an alert in Alerts when ${bill.label} moves`, 'success');
+  };
   return (
-    <BouncyPressable
-      onPress={() => follow.mutate({ id: bill.id, follow: !on }, { onError: toastError })}
+    <Tap
+      onPress={press}
       accessibilityRole="button"
-      accessibilityLabel={on ? `Unfollow ${bill.label}` : `Follow ${bill.label} for updates`}
+      accessibilityLabel={on ? `Stop alerts for ${bill.label}` : `Get alerts when ${bill.label} moves`}
       accessibilityState={{ selected: on }}
-      style={[styles.followBtn, label && styles.followLabeled, on && styles.voteOn]}>
-      <Icon name="bell" size={16} color={fg} />
-      {label ? <Text style={[styles.footerText, { color: fg }]}>{on ? 'Following' : 'Follow'}</Text> : null}
-    </BouncyPressable>
+      style={[styles.footerBtn, on && { backgroundColor: p.on }]}>
+      <Icon name={on ? 'check' : 'bell'} size={16} color={fg} />
+      <Text style={[styles.footerText, { color: fg }]}>{on ? 'Following' : 'Follow'}</Text>
+    </Tap>
   );
 }
 
-/** Search passage with the matched words (wrapped in \u0002…\u0003 by the API) in bold. */
-export function Snippet({ text, color }: { text: string; color: string }) {
+/** Search passage with the matched words (wrapped in \u0002…\u0003 by the API) set in medium ink. */
+export function Snippet({ text }: { text: string }) {
   const parts = text.split(/(\u0002[^\u0003]*\u0003)/);
   return (
     <View style={styles.snippet}>
-      <Icon name="search" size={13} color={colors.inkSoft} />
-      <Txt style={[type.small, { flex: 1, color: colors.inkSoft, lineHeight: 18 }]} numberOfLines={4}>
+      <Icon name="search" size={14} color={colors.muted} />
+      <Txt style={[type.small, { flex: 1 }]} numberOfLines={4}>
         …
         {parts.map((part, i) =>
           part.startsWith('\u0002') ? (
-            <Text key={i} style={{ fontFamily: fonts.extrabold, color }}>
+            <Text key={i} style={styles.hit}>
               {part.slice(1, -1)}
             </Text>
           ) : (
@@ -78,125 +117,135 @@ export function Snippet({ text, color }: { text: string; color: string }) {
   );
 }
 
+/** The sponsor's party initial in a small circle of the bar's text color. Read aloud as the party's name. */
 export function PartyBadge({ code }: { code: string | null }) {
   const p = partyColors(code);
   return (
-    <View style={[styles.partyBadge, { backgroundColor: '#fff' }]}>
+    <View style={[styles.partyBadge, { backgroundColor: p.on }]} accessible accessibilityLabel={`${p.label} sponsor`}>
       <Text style={[styles.partyText, { color: p.main }]}>{code ? code.slice(0, 1) : '?'}</Text>
     </View>
   );
 }
 
+/** "Democratic sponsor": the card's color, said in words, so it never has to be decoded. */
+export function sponsorWords(code: string | null) {
+  const label = partyColors(code).label;
+  return `${label === 'Democrat' ? 'Democratic' : label === 'Other' ? 'Other-party' : label} sponsor`;
+}
+
 export function BillCard({ bill }: { bill: Bill }) {
   const p = partyColors(bill.sponsor_party);
+  const qc = useQueryClient();
   // From search, the first matched word goes along so the bill page's text finder is ready with it.
   const find = bill.snippet?.match(/\u0002([^\u0003]*)\u0003/)?.[1];
-  const open = () => router.push({ pathname: '/bill/[id]', params: find ? { id: bill.id, find } : { id: bill.id } });
+  const href = { pathname: '/bill/[id]', params: find ? { id: bill.id, find } : { id: bill.id } } as const;
+  // Loading starts on press-in, a beat before the tap completes, so the page usually opens filled in.
+  const prefetch = () => prefetchBill(qc, bill.id);
 
   return (
-    <View style={[styles.card, sticker(4)]}>
-      <BouncyPressable onPress={open} accessibilityRole="button" accessibilityLabel={`Open ${bill.label}`}>
+    <View style={styles.card}>
+      <Link href={href} asChild>
+      <Tap onPressIn={prefetch} hitSlop={0} accessibilityRole="link" accessibilityLabel={`Read ${bill.label}: ${bill.title}`}>
+        <ZoomSource>
         <View style={[styles.header, { backgroundColor: p.main }]}>
           <PartyBadge code={bill.sponsor_party} />
-          <Text style={styles.headerLabel}>{bill.label}</Text>
-          <Text style={styles.headerDate}>{shortDate(bill.last_action_date)}</Text>
+          <Text style={[styles.headerLabel, { color: p.on }]}>{bill.label}</Text>
+          <Text style={[styles.headerDate, { color: onAlpha(p, 0.85) }]} numberOfLines={1}>
+            {sponsorWords(bill.sponsor_party)}
+          </Text>
           {bill.is_trending ? (
             <View style={styles.trending}>
-              <Icon name="trending-up" size={12} />
-              <Text style={styles.trendingText}>Trending</Text>
+              <Icon name="trending-up" size={14} color={p.on} />
+              <Text style={[styles.trendingText, { color: p.on }]}>Trending</Text>
             </View>
           ) : null}
         </View>
+        </ZoomSource>
         <View style={styles.body}>
-          {bill.reason ? (
-            <View style={styles.reason} accessibilityLabel={`Why you're seeing this: ${bill.reason}`}>
-              <Icon name="info" size={13} color={colors.muted} />
-              <Txt style={styles.reasonText} numberOfLines={1}>
-                {bill.reason}
+          <View style={styles.reason}>
+            <Txt style={[type.meta, { flexShrink: 0 }]}>{`Last action ${shortDate(bill.last_action_date)}`}</Txt>
+            {bill.reason ? (
+              <Txt style={[type.meta, { flex: 1 }]} numberOfLines={1} accessibilityLabel={`Why you're seeing this: ${bill.reason}`}>
+                {` · ${bill.reason}`}
               </Txt>
-            </View>
-          ) : null}
+            ) : null}
+          </View>
           <Txt style={type.h3} numberOfLines={3}>
             {bill.title}
           </Txt>
-          <View style={{ marginTop: space.md }}>
+          <View style={{ marginTop: space.lg }}>
             <BillTimeline bill={bill} />
           </View>
-          {bill.snippet ? <Snippet text={bill.snippet} color={p.main} /> : null}
+          {bill.snippet ? <Snippet text={bill.snippet} /> : null}
           {bill.summary_simple && !bill.snippet ? (
-            <Txt style={[type.body, { marginTop: space.sm, color: colors.inkSoft }]}>
-              {truncate(plainText(bill.summary_simple), 240)} <Text style={{ fontFamily: fonts.extrabold, color: p.main }}>Read more</Text>
+            <Txt style={[type.body, { marginTop: space.md, color: colors.inkSoft }]}>
+              {truncate(plainText(bill.summary_simple), 240)} <Text style={styles.more}>Read more</Text>
             </Txt>
           ) : null}
-          <View style={styles.tags}>
-            {bill.primary_tags.map((t) => (
-              <Chip key={t} label={t} />
-            ))}
-          </View>
+          {bill.primary_tags.length ? (
+            <View style={styles.tags}>
+              {bill.primary_tags.map((t) => (
+                <Chip key={t} label={t} small />
+              ))}
+            </View>
+          ) : null}
         </View>
-      </BouncyPressable>
+      </Tap>
+      </Link>
       <View style={[styles.footer, { backgroundColor: p.main }]}>
         <VoteControl bill={bill} />
         <View style={{ flex: 1 }} />
-        <BouncyPressable onPress={open} style={styles.footerBtn} accessibilityLabel="Comments">
-          <Icon name="message-circle" size={17} color="#fff" />
-          <Text style={styles.footerText}>{bill.comment_count}</Text>
-        </BouncyPressable>
+        <Link href={href} asChild>
+          <Tap onPressIn={prefetch} style={styles.footerBtn} accessibilityRole="link" accessibilityLabel={`Read ${bill.comment_count} ${bill.comment_count === 1 ? 'comment' : 'comments'}`}>
+            <Icon name="message-circle" size={16} color={p.on} />
+            <Text style={[styles.footerText, styles.count, { color: p.on }]}>{bill.comment_count}</Text>
+          </Tap>
+        </Link>
         <FollowBillButton bill={bill} />
-        <BouncyPressable onPress={() => shareBill(bill)} style={styles.footerBtn} accessibilityLabel="Share">
-          <Icon name="share" size={16} color="#fff" />
-          <Text style={styles.footerText}>Share</Text>
-        </BouncyPressable>
+        <Tap onPress={() => shareBill(bill)} style={styles.footerBtn} accessibilityLabel={`Share ${bill.label}`}>
+          <Icon name="share" size={16} color={p.on} />
+        </Tap>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: colors.surface, overflow: 'hidden', marginBottom: space.xl },
+  card: { backgroundColor: colors.surface, overflow: 'hidden', marginBottom: space.lg, ...outline(radius.lg) },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
     paddingHorizontal: space.lg,
-    paddingVertical: 10,
-    borderBottomWidth: 2,
-    borderBottomColor: colors.line,
+    paddingVertical: space.md,
     flexWrap: 'wrap',
   },
-  headerLabel: { fontFamily: fonts.black, color: '#fff', fontSize: 15 },
-  headerDate: { fontFamily: fonts.semibold, color: 'rgba(255,255,255,0.85)', fontSize: 13, flex: 1 },
-  partyBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: colors.line,
-  },
-  partyText: { fontFamily: fonts.black, fontSize: 12 },
-  trending: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.yellow, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 2, borderColor: colors.line },
-  trendingText: { fontFamily: fonts.extrabold, fontSize: 11, color: colors.ink },
-  body: { padding: space.lg, backgroundColor: colors.surface },
-  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: space.md },
-  footer: {
+  headerLabel: { fontFamily: fonts.medium, fontSize: 14, lineHeight: 20, letterSpacing: 0.3, ...figures },
+  headerDate: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 18, flex: 1 },
+  partyBadge: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  partyText: { fontFamily: fonts.semibold, fontSize: 11, lineHeight: 14 },
+  trending: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  trendingText: { fontFamily: fonts.medium, fontSize: 12, lineHeight: 16 },
+  body: { padding: space.lg },
+  reason: { flexDirection: 'row', alignItems: 'center', gap: space.xs, marginBottom: space.sm },
+  more: { fontFamily: fonts.medium, color: colors.ink },
+  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.lg },
+  footer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.sm, paddingVertical: space.xs },
+  footerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: space.sm,
-    paddingVertical: 6,
-    borderTopWidth: 2,
-    borderTopColor: colors.line,
+    justifyContent: 'center',
+    gap: space.sm,
+    height: 36,
+    minWidth: 36,
+    paddingHorizontal: space.md,
+    borderRadius: 18,
   },
-  footerBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: space.md, paddingVertical: 8 },
-  footerText: { fontFamily: fonts.extrabold, color: '#fff', fontSize: 14 },
-  vote: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  voteBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  voteOn: { backgroundColor: colors.yellow, borderWidth: 2, borderColor: colors.line },
-  followBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 34, minWidth: 34, borderRadius: 17, justifyContent: 'center', marginHorizontal: 2 },
-  followLabeled: { paddingHorizontal: space.md },
-  reason: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: space.sm },
-  reasonText: { fontFamily: fonts.bold, fontSize: 12, color: colors.muted, flex: 1 },
-  snippet: { flexDirection: 'row', gap: 6, marginTop: space.sm, padding: space.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceAlt },
-  score: { fontFamily: fonts.black, fontSize: 16, minWidth: 28, textAlign: 'center' },
+  footerText: { fontFamily: fonts.medium, fontSize: 14, lineHeight: 20 },
+  count: { ...figures },
+  vote: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  voteBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  score: { fontFamily: fonts.medium, fontSize: 15, lineHeight: 20, minWidth: 28, textAlign: 'center', ...figures },
+  snippet: { flexDirection: 'row', gap: space.sm, marginTop: space.md, padding: space.md, borderRadius: radius.sm, borderCurve: 'continuous', backgroundColor: colors.surfaceAlt },
+  hit: { fontFamily: fonts.semibold, color: colors.ink },
 });

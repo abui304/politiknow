@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Circle, G, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 
 import type { NationalDetail, NationalMap as NationalMapData } from '@/lib/types';
-import { colors, fonts, radius, sticker } from '@/theme';
+import { colors, float, fonts, outline, radius, space } from '@/theme';
 
 import { Icon, Txt } from './ui';
 import type { Box } from './ZoomView';
@@ -13,7 +13,7 @@ export const TAG_W = 22;
 export const TAG_H = 12;
 
 /** Highlight colors for places the user cares about (not party colors). */
-export const PLACE_COLORS = { home: colors.mint, following: colors.lilac };
+export const PLACE_COLORS = { home: colors.ink, following: colors.mapLineStrong };
 
 type MapSvgProps = {
   map: NationalMapData;
@@ -68,12 +68,12 @@ export function NationalMapSvg({ map, view, px, home, following, zoomed = false,
           key={code}
           d={statePath(code)}
           fill={colors.surface}
-          stroke={colors.line}
+          stroke={colors.ink}
           strokeWidth={1.2 * unit}
           strokeLinejoin="round"
         />
       ))}
-      <G fill="none" stroke={zoomed ? '#BFAE96' : '#D8C9B4'} strokeWidth={(zoomed ? 0.8 : 0.5) * unit} strokeLinejoin="round">
+      <G fill="none" stroke={zoomed ? colors.mapLineStrong : colors.mapLine} strokeWidth={(zoomed ? 0.8 : 0.5) * unit} strokeLinejoin="round">
         {Object.keys(map.districts).map((key) => (
           <Path key={key} d={districtPath(key)} />
         ))}
@@ -83,13 +83,13 @@ export function NationalMapSvg({ map, view, px, home, following, zoomed = false,
           key={m.key}
           d={districtPath(m.key)}
           fill={m.color}
-          stroke={colors.line}
+          stroke={colors.ink}
           strokeWidth={1 * unit}
           strokeLinejoin="round"
         />
       ))}
       {/* State borders again, on top of the districts. */}
-      <G fill="none" stroke={colors.line} strokeWidth={1.2 * unit} strokeLinejoin="round">
+      <G fill="none" stroke={colors.ink} strokeWidth={1.2 * unit} strokeLinejoin="round">
         {Object.keys(map.states).map((code) => (
           <Path key={code} d={statePath(code)} />
         ))}
@@ -98,7 +98,7 @@ export function NationalMapSvg({ map, view, px, home, following, zoomed = false,
         // Zoomed in, small states have room for their label, so the callouts (which would cross the map) go.
         const tag = zoomed ? null : s.tag;
         const [x, y] = tag ?? s.label;
-        const label = { x, y: y + 3 * unit, fontSize: 9 * unit, fontFamily: fonts.extrabold, textAnchor: 'middle' } as const;
+        const label = { x, y: y + 3 * unit, fontSize: 9 * unit, fontFamily: fonts.medium, textAnchor: 'middle' } as const;
         return (
           <G key={code}>
             {tag ? (
@@ -111,7 +111,7 @@ export function NationalMapSvg({ map, view, px, home, following, zoomed = false,
                   height={TAG_H * unit}
                   rx={3 * unit}
                   fill={colors.surface}
-                  stroke={colors.line}
+                  stroke={colors.ink}
                   strokeWidth={1 * unit}
                 />
               </>
@@ -131,7 +131,7 @@ export function NationalMapSvg({ map, view, px, home, following, zoomed = false,
             cy={cy}
             r={3.5 * unit}
             fill={m.color}
-            stroke={colors.line}
+            stroke={colors.ink}
             strokeWidth={1.5 * unit}
           />
         );
@@ -159,12 +159,12 @@ export function NationalMap({ map, home, following, onExpand }: Props) {
         onPress={onExpand}
         accessibilityRole="button"
         accessibilityLabel="Map of the United States. Opens a full-screen map you can zoom."
-        style={[styles.frame, sticker(3, radius.lg), { aspectRatio: map.width / map.height }]}
+        style={[styles.frame, outline(radius.lg), { aspectRatio: map.width / map.height }]}
         onLayout={(e) => setPx(e.nativeEvent.layout.width || px)}>
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
           <NationalMapSvg map={map} view={[0, 0, map.width, map.height]} px={px} home={home} following={following} />
         </View>
-        <View pointerEvents="none" style={[styles.expand, sticker(2, radius.sm)]}>
+        <View pointerEvents="none" style={[styles.expand, outline(radius.xs), float()]}>
           <Icon name="maximize-2" size={14} />
         </View>
       </Pressable>
@@ -189,8 +189,8 @@ export function Swatch({ color, label }: { color: string; label: string }) {
 const styles = StyleSheet.create({
   frame: { width: '100%', backgroundColor: colors.surfaceAlt, overflow: 'hidden' },
   expand: { position: 'absolute', right: 8, top: 8, width: 28, height: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
-  legend: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 },
-  swatchRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  swatch: { width: 12, height: 12, borderRadius: 3, borderWidth: 1.5, borderColor: colors.line },
-  legendText: { fontFamily: fonts.bold, fontSize: 12, color: colors.inkSoft },
+  legend: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.sm },
+  swatchRow: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  swatch: { width: 12, height: 12, borderRadius: 3 },
+  legendText: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, color: colors.inkSoft },
 });

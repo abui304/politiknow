@@ -10,7 +10,7 @@ import { Screen, TopBar, Txt } from '@/components/ui';
 import { ZoomView } from '@/components/ZoomView';
 import { useStateDistricts, useStateMap } from '@/lib/queries';
 import { pathContains } from '@/lib/svg';
-import { colors, radius, space, sticker, type } from '@/theme';
+import { colors, radius, space, outline, type } from '@/theme';
 
 /** A state's district map full screen, for picking a district: pinch or use the buttons to zoom, tap a
  *  district to see who represents it, follow it, or make it your district. Route param `district`
@@ -31,7 +31,7 @@ export default function StateMapScreen() {
       <View style={styles.top}>
         <TopBar title={info ? `${info.name} districts` : code} />
       </View>
-      <View style={[styles.frame, sticker(3, radius.lg)]}>
+      <View style={[styles.frame, outline(radius.lg)]}>
         {map && info ? (
           <ZoomView
             base={[0, 0, map.width, map.height]}

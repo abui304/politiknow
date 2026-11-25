@@ -1,80 +1,93 @@
-// PolitiKNOW design tokens: cozy cream base + playful "sticker" outlines and offset shadows.
+// PolitiKNOW design tokens. The world is the printed record: ink on cream paper, hairline rules,
+// docket numbers. Chrome stays quiet (paper, ink, hairlines); party color lives on bills and members.
 import { Platform, type TextStyle, type ViewStyle } from 'react-native';
 
+// One hue per color. Every neutral is hue 30 (warm paper and ink); each party color keeps one hue for its
+// fill and its tint; success and warning have one hue each. Shades change lightness and saturation only.
 export const colors = {
-  bg: '#FFF7EC',
+  bg: '#FAF7F4', // paper
   surface: '#FFFFFF',
-  surfaceAlt: '#FFF0DC',
-  ink: '#2A2340',
-  inkSoft: '#5C5470',
-  muted: '#9A93A8',
-  line: '#2A2340',
-  hairline: '#EADFCF',
+  surfaceAlt: '#F2EDE8', // a step down from paper, for wells, skeletons and pressed states
+  ink: '#2B2622',
+  inkSoft: '#5C544D',
+  muted: '#736B64',
+  line: 'rgba(43,38,34,0.10)', // hairline borders
+  lineStrong: 'rgba(43,38,34,0.18)', // inputs and controls
+  hairline: '#E9E3DD', // opaque rule, for tracks and separators drawn over other shapes
+  mapLine: '#D8D1CB',
+  mapLineStrong: '#B6ADA5',
 
-  red: '#E5484D', // from the logo's "P"
-  blue: '#3E63DD', // from the logo's "K"
-  yellow: '#FFC53D',
-  mint: '#5BD1A5',
-  lilac: '#B9A6FF',
-  pink: '#FF8FB1',
-
-  success: '#2EAD7A',
-  danger: '#E5484D',
+  success: '#22774F',
+  warning: '#8F5F00',
+  danger: '#C83237', // the Republican red's hue, so red means one thing visually
 };
 
-// Full-card party colors (kept from the original design).
-export const party: Record<string, { main: string; soft: string; label: string }> = {
-  D: { main: '#3E63DD', soft: '#E6ECFF', label: 'Democrat' },
-  R: { main: '#E5484D', soft: '#FFE6E6', label: 'Republican' },
-  I: { main: '#F0A81A', soft: '#FFF3D6', label: 'Independent' },
-  ID: { main: '#F0A81A', soft: '#FFF3D6', label: 'Independent' },
-  other: { main: '#8B6CF0', soft: '#EFEAFF', label: 'Other' },
+// Full-card party colors. `on` is the text and icon color that reads on `main`.
+export const party: Record<string, { main: string; soft: string; on: string; label: string }> = {
+  D: { main: '#3C61DD', soft: '#E8EDFC', on: '#FFFFFF', label: 'Democrat' },
+  R: { main: '#C83237', soft: '#FCE9E9', on: '#FFFFFF', label: 'Republican' },
+  I: { main: '#F0A919', soft: '#FCF2DE', on: '#2B2622', label: 'Independent' },
+  ID: { main: '#F0A919', soft: '#FCF2DE', on: '#2B2622', label: 'Independent' },
+  other: { main: '#635C54', soft: '#F2EDE8', on: '#FFFFFF', label: 'Other' },
 };
 
 export function partyColors(code?: string | null) {
   return party[code ?? ''] ?? party.other;
 }
 
-export const radius = { sm: 10, md: 16, lg: 22, pill: 999 };
+/** The party's `on` color at an opacity, for secondary text and rules on a party-colored surface. */
+export function onAlpha(p: { on: string }, alpha: number) {
+  return p.on === '#FFFFFF' ? `rgba(255,255,255,${alpha})` : `rgba(43,38,34,${alpha})`;
+}
+
+// Nested radii: an inner radius is the outer one minus the padding between them.
+export const radius = { xs: 6, sm: 10, md: 12, lg: 16, pill: 999 };
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 };
 
-/** Merriweather: a sturdy serif to match the logo's lettering. */
+/** Merriweather: a sturdy serif to match the logo's lettering. Weights stop at 600. */
 export const fonts = {
   regular: 'Merriweather_400Regular',
+  medium: 'Merriweather_500Medium',
   semibold: 'Merriweather_600SemiBold',
-  bold: 'Merriweather_700Bold',
-  extrabold: 'Merriweather_800ExtraBold',
-  black: 'Merriweather_900Black',
 };
+
+/** Merriweather's tabular lining figures: every digit the same width, so counts don't jiggle as they change
+ *  and columns of numbers line up. Spread into any style that shows numbers. */
+export const figures: TextStyle = { fontVariant: ['tabular-nums', 'lining-nums'] };
 
 export const type: Record<string, TextStyle> = {
-  // Explicit lineHeight: without one, the heaviest weight's tallest glyphs (e.g. "@") draw above the box on phones.
-  title: { fontFamily: fonts.black, fontSize: 28, lineHeight: 36, color: colors.ink, letterSpacing: -0.3 },
-  h2: { fontFamily: fonts.extrabold, fontSize: 20, color: colors.ink },
-  h3: { fontFamily: fonts.extrabold, fontSize: 16, color: colors.ink },
+  // Explicit lineHeight on every style so serif ascenders never draw above the box on phones.
+  title: { fontFamily: fonts.semibold, fontSize: 28, lineHeight: 36, color: colors.ink, letterSpacing: -0.2 },
+  h2: { fontFamily: fonts.semibold, fontSize: 20, lineHeight: 28, color: colors.ink },
+  h3: { fontFamily: fonts.medium, fontSize: 17, lineHeight: 24, color: colors.ink },
   body: { fontFamily: fonts.regular, fontSize: 15, lineHeight: 22, color: colors.ink },
-  bodyBold: { fontFamily: fonts.bold, fontSize: 15, lineHeight: 22, color: colors.ink },
-  small: { fontFamily: fonts.semibold, fontSize: 13, color: colors.inkSoft },
-  tiny: { fontFamily: fonts.bold, fontSize: 11, color: colors.muted, letterSpacing: 0.4 },
+  bodyMedium: { fontFamily: fonts.medium, fontSize: 15, lineHeight: 22, color: colors.ink },
+  small: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 18, color: colors.inkSoft },
+  meta: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, color: colors.muted },
+  /** Bill numbers like H.R. 1234, set the same way everywhere: the app's signature. */
+  docket: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 18, letterSpacing: 0.3, color: colors.ink, ...figures },
+  figure: { fontFamily: fonts.medium, fontSize: 14, lineHeight: 20, color: colors.ink, ...figures },
 };
 
-/** Chunky outline + hard offset shadow — the "sticker" look. */
-export function sticker(offset = 3, borderRadius = radius.lg): ViewStyle {
-  return {
-    borderWidth: 2,
-    borderColor: colors.line,
-    borderRadius,
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: `${offset}px ${offset}px 0 ${colors.line}` } as ViewStyle)
-      : {
-          shadowColor: colors.line,
-          shadowOffset: { width: offset, height: offset },
-          shadowOpacity: 1,
-          shadowRadius: 0,
-          elevation: offset + 1,
-        }),
-  };
+/** iOS squircle corners: the curve eases into the straight edge instead of meeting it at a hard tangent. */
+export const continuous: ViewStyle = { borderCurve: 'continuous' };
+
+/** A quiet hairline frame for cards, rows and maps. */
+export function outline(borderRadius: number = radius.lg): ViewStyle {
+  return { borderWidth: 1, borderColor: colors.line, borderRadius, borderCurve: 'continuous' };
 }
+
+/** Soft neutral shadow, only for things that float over content (toasts, sheets, map buttons). */
+export function float(): ViewStyle {
+  return Platform.OS === 'web'
+    ? ({ boxShadow: '0 4px 16px rgba(43,38,34,0.10)' } as ViewStyle)
+    : { shadowColor: '#2B2622', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 4 };
+}
+
+/** One easing curve and three durations for the whole app. Gestures use the spring instead, so a motion can
+ *  be interrupted mid-flight and carry on from the finger's velocity. */
+export const motion = { fast: 100, base: 160, enter: 240 };
+export const spring = { damping: 26, stiffness: 320, mass: 1 };
 
 /** Max width of the app column; on desktop web the app renders as a centered phone-sized column. */
 export const APP_MAX_WIDTH = 520;

@@ -4,9 +4,9 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import { colors, radius, sticker } from '@/theme';
+import { colors, float, outline, radius, space } from '@/theme';
 
-import { BouncyPressable, Icon } from './ui';
+import { Tap, Icon } from './ui';
 
 export type Box = [number, number, number, number]; // x0, y0, x1, y1
 
@@ -189,20 +189,20 @@ export function ZoomView({ base, initial, maxZoom, ref, onTap, children }: Props
 
 function ZoomButton({ icon, label, disabled, onPress }: { icon: 'plus' | 'minus' | 'maximize'; label: string; disabled: boolean; onPress: () => void }) {
   return (
-    <BouncyPressable
+    <Tap
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled }}
-      style={[styles.button, sticker(2, radius.md), disabled && { opacity: 0.4 }]}>
+      style={[styles.button, outline(radius.sm), float(), disabled && { opacity: 0.4 }]}>
       <Icon name={icon} size={18} />
-    </BouncyPressable>
+    </Tap>
   );
 }
 
 const styles = StyleSheet.create({
   viewport: { flex: 1, overflow: 'hidden', backgroundColor: colors.surfaceAlt },
-  controls: { position: 'absolute', right: 12, top: 12, gap: 8 },
+  controls: { position: 'absolute', right: 12, top: 12, gap: space.sm },
   button: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
 });

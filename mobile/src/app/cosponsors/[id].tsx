@@ -1,8 +1,8 @@
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { FlatList, StyleSheet, View } from 'react-native';
 
 import { LegislatorRow } from '@/components/LegislatorRow';
-import { Empty, Loading, Screen, TopBar, Txt } from '@/components/ui';
+import { Button, Empty, Screen, SkeletonList, TopBar, Txt } from '@/components/ui';
 import { shortDate } from '@/lib/format';
 import { useBill, useBillCosponsors } from '@/lib/queries';
 import { space, type } from '@/theme';
@@ -37,7 +37,16 @@ export default function Cosponsors() {
           />
         )}
         ListEmptyComponent={
-          isLoading ? <Loading /> : <Empty icon="users" title="No cosponsors" body={error?.message} />
+          isLoading ? (
+            <SkeletonList kind="row" count={4} />
+          ) : (
+            <Empty
+              icon="users"
+              title="No cosponsors"
+              body={error?.message ?? 'No one else has signed on to this bill yet.'}
+              action={<Button title="Back to the bill" small variant="secondary" onPress={() => router.back()} />}
+            />
+          )
         }
       />
     </Screen>

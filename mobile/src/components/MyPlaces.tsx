@@ -3,14 +3,15 @@ import { useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { currentPosition } from '@/lib/location';
+import { STATES } from '@/lib/places';
 import { useFollowDistrict, useFollowing, useMyDistricts, useNationalMap, useRepresentatives, useSetHome } from '@/lib/queries';
 import { toast, toastError } from '@/lib/toast';
 import type { District } from '@/lib/types';
-import { colors, fonts, partyColors, radius, space, sticker, type } from '@/theme';
+import { colors, fonts, partyColors, radius, space, outline, type } from '@/theme';
 
 import { LegislatorRow } from './LegislatorRow';
 import { NationalMap, PLACE_COLORS } from './NationalMap';
-import { BouncyPressable, Button, Card, Icon, Txt } from './ui';
+import { BottomSheet, Button, Card, DocketTag, Icon, Tap, Txt } from './ui';
 
 const openState = (state: string, district?: number) =>
   router.push({ pathname: '/state/[code]', params: district === undefined ? { code: state } : { code: state, district: String(district) } });
@@ -20,6 +21,7 @@ export function RepresentativesCard() {
   const { data: reps, isLoading } = useRepresentatives();
   const setHome = useSetHome();
   const [locating, setLocating] = useState(false);
+  const [picking, setPicking] = useState(false);
 
   const locate = async () => {
     setLocating(true);
@@ -40,21 +42,21 @@ export function RepresentativesCard() {
         <Icon name="map-pin" size={18} />
         <Txt style={[type.h3, { flex: 1 }]}>Your representatives</Txt>
         {home ? (
-          <BouncyPressable onPress={locate} disabled={locating} accessibilityRole="button" style={styles.link}>
-            {locating ? <ActivityIndicator size="small" color={colors.inkSoft} /> : <Icon name="crosshair" size={14} color={colors.blue} />}
+          <Tap onPress={locate} disabled={locating} accessibilityRole="button" style={styles.link}>
+            {locating ? <ActivityIndicator size="small" color={colors.inkSoft} /> : <Icon name="crosshair" size={14} color={colors.inkSoft} />}
             <Txt style={styles.linkText}>Update</Txt>
-          </BouncyPressable>
+          </Tap>
         ) : null}
       </View>
       {isLoading ? (
         <ActivityIndicator color={colors.inkSoft} />
       ) : home ? (
         <>
-          <BouncyPressable onPress={() => openState(home.state, home.district)} accessibilityRole="link" style={styles.district}>
+          <Tap onPress={() => openState(home.state, home.district)} accessibilityRole="link" style={styles.district}>
             <View style={[styles.swatch, { backgroundColor: PLACE_COLORS.home }]} />
-            <Txt style={[type.bodyBold, { flex: 1 }]}>{home.name}</Txt>
+            <Txt style={[type.bodyMedium, { flex: 1 }]}>{home.name}</Txt>
             <Icon name="chevron-right" size={16} color={colors.inkSoft} />
-          </BouncyPressable>
+          </Tap>
           {home.representative ? (
             <LegislatorRow legislator={home.representative} note="Your representative" />
           ) : (
@@ -68,17 +70,43 @@ export function RepresentativesCard() {
         <>
           <Txt style={type.body}>Find the people who represent you in Congress.</Txt>
           <Button title="Use my location" icon="crosshair" onPress={locate} loading={locating} />
-          <Txt style={type.small}>Or tap your state on the map below and pick your district.</Txt>
+          <Button title="Choose my state instead" icon="list" variant="secondary" onPress={() => setPicking(true)} />
+          <StatePicker visible={picking} onClose={() => setPicking(false)} />
         </>
       )}
       <View style={styles.privacy}>
-        <Icon name="lock" size={13} color={colors.muted} />
-        <Txt style={[type.tiny, { flex: 1, letterSpacing: 0 }]}>
+        <Icon name="lock" size={14} color={colors.muted} />
+        <Txt style={[type.meta, { flex: 1 }]}>
           Your location is used once to find your district and is never saved. Only your state and district are stored, and
           they’re never shown on your profile.
         </Txt>
       </View>
     </Card>
+  );
+}
+
+/** Every state as a plain list, for people who'd rather not tap a map or share their location. Picking one
+ *  opens its page, which lists its districts by number with each member's name. */
+function StatePicker({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  return (
+    <BottomSheet visible={visible} title="Which state do you vote in?" onClose={onClose}>
+      {Object.entries(STATES)
+        .sort(([, a], [, b]) => a.localeCompare(b))
+        .map(([code, name]) => (
+          <Tap
+            key={code}
+            hitSlop={0}
+            accessibilityRole="link"
+            onPress={() => {
+              onClose();
+              openState(code);
+            }}
+            style={styles.stateRow}>
+            <Txt style={[type.body, { flex: 1 }]}>{name}</Txt>
+            <Icon name="chevron-right" size={16} color={colors.muted} />
+          </Tap>
+        ))}
+    </BottomSheet>
   );
 }
 
@@ -104,7 +132,7 @@ export function MyMapCard() {
           onExpand={() => router.push('/map')}
         />
       ) : (
-        <View style={[styles.mapPlaceholder, sticker(3, radius.lg)]}>
+        <View style={[styles.mapPlaceholder, outline(radius.lg)]}>
           <ActivityIndicator color={colors.inkSoft} />
         </View>
       )}
@@ -124,21 +152,21 @@ function FollowedDistrict({ district: d }: { district: District }) {
   const follow = useFollowDistrict();
   const rep = d.representative;
   return (
-    <BouncyPressable
+    <Tap
       onPress={() => openState(d.state, d.district)}
       accessibilityRole="link"
       accessibilityLabel={`${d.name}${rep ? `, represented by ${rep.name}` : ''}`}
-      style={[styles.row, sticker(2, radius.md)]}>
+      style={[styles.row, outline(radius.md)]}>
       <View style={[styles.swatch, { backgroundColor: PLACE_COLORS.following }]} />
       <View style={{ flex: 1 }}>
-        <Txt style={type.bodyBold} numberOfLines={1}>
+        <Txt style={type.bodyMedium} numberOfLines={1}>
           {d.name}
         </Txt>
         <Txt style={type.small} numberOfLines={1}>
           {rep ? `${rep.name} (${rep.party ?? '?'})` : 'Vacant'}
         </Txt>
       </View>
-      <BouncyPressable
+      <Tap
         onPress={() =>
           follow.mutate({ state: d.state, district: d.district, follow: false }, { onError: toastError })
         }
@@ -147,8 +175,8 @@ function FollowedDistrict({ district: d }: { district: District }) {
         hitSlop={8}
         style={styles.remove}>
         <Icon name="x" size={16} color={colors.inkSoft} />
-      </BouncyPressable>
-    </BouncyPressable>
+      </Tap>
+    </Tap>
   );
 }
 
@@ -166,17 +194,20 @@ export function FollowingCard() {
         <LegislatorRow key={l.bioguide_id} legislator={l} />
       ))}
       {data.bills.map((b) => (
-        <BouncyPressable
+        <Tap
           key={b.id}
           onPress={() => router.push({ pathname: '/bill/[id]', params: { id: b.id } })}
           accessibilityRole="link"
-          style={[styles.row, sticker(2, radius.md), { backgroundColor: partyColors(b.sponsor_party).soft }]}>
-          <Txt style={[styles.billLabel, { color: partyColors(b.sponsor_party).main }]}>{b.label}</Txt>
-          <Txt style={[type.small, { flex: 1, color: colors.ink }]} numberOfLines={2}>
-            {b.title}
-          </Txt>
-          <Icon name="chevron-right" size={16} color={colors.inkSoft} />
-        </BouncyPressable>
+          style={[styles.row, outline(radius.md)]}>
+          <View style={[styles.partyDot, { backgroundColor: partyColors(b.sponsor_party).main }]} />
+          <View style={{ flex: 1, gap: space.xs }}>
+            <DocketTag label={b.label} />
+            <Txt style={[type.small, { color: colors.ink }]} numberOfLines={2}>
+              {b.title}
+            </Txt>
+          </View>
+          <Icon name="chevron-right" size={16} color={colors.muted} />
+        </Tap>
       ))}
     </Card>
   );
@@ -184,13 +215,14 @@ export function FollowingCard() {
 
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  link: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4 },
-  linkText: { fontFamily: fonts.extrabold, fontSize: 13, color: colors.blue },
+  link: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingVertical: space.xs },
+  linkText: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 18, color: colors.ink },
   district: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  swatch: { width: 14, height: 14, borderRadius: 4, borderWidth: 2, borderColor: colors.line },
-  privacy: { flexDirection: 'row', gap: 6, alignItems: 'flex-start' },
+  swatch: { width: 12, height: 12, borderRadius: 3 },
+  privacy: { flexDirection: 'row', gap: space.sm, alignItems: 'flex-start' },
   mapPlaceholder: { aspectRatio: 1.6, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: 10, paddingHorizontal: space.md, backgroundColor: colors.surface },
-  remove: { padding: 4 },
-  billLabel: { fontFamily: fonts.black, fontSize: 13, minWidth: 64 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md, paddingHorizontal: space.md, backgroundColor: colors.surface },
+  remove: { padding: space.xs },
+  partyDot: { width: 8, height: 8, borderRadius: 4 },
+  stateRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: space.md, borderBottomWidth: 1, borderBottomColor: colors.line },
 });

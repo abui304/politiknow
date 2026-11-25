@@ -50,6 +50,7 @@ function GoogleButtonInner() {
   return (
     <Button
       title="Continue with Google"
+      size="large"
       variant="secondary"
       disabled={!request}
       loading={busy}
