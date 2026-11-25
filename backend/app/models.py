@@ -62,6 +62,8 @@ class User(Base):
     )
     social_provider_id: Mapped[str | None] = mapped_column(String(255))
     onboarding_tags: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    # Topics are optional: this records that the topic step was finished, even with none picked.
+    onboarded: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     notification_preferences: Mapped[dict] = mapped_column(JSONB, default=dict)
     is_premium: Mapped[bool] = mapped_column(Boolean, default=False)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -181,6 +183,8 @@ class Legislator(Base):
     state_name: Mapped[str | None] = mapped_column(String(50))
     image_url: Mapped[str | None] = mapped_column(Text)
     image_credit: Mapped[str | None] = mapped_column(String(255))
+    # Placeholder drawn while the photo loads (services/blurhash.py); cleared when the photo changes.
+    image_blurhash: Mapped[str | None] = mapped_column(String(64))
     # Continuous spans per chamber: [{chamber, start, end (None = still serving)}]
     career: Mapped[list[dict]] = mapped_column(JSONB, default=list, server_default="[]")
     office_address: Mapped[str | None] = mapped_column(Text)

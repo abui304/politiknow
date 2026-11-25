@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import timeline
 from app.config import settings
 from app.models import Bill, BillCosponsor, IngestState
-from app.services import hashtags, legislators, llm, notify
+from app.services import blurhash, hashtags, legislators, llm, notify
 from app.services.congress import CongressClient
 
 log = logging.getLogger(__name__)
@@ -211,6 +211,12 @@ async def _run_ingestion(db: AsyncSession, api: CongressClient, now: datetime, f
 
     # New sponsors/cosponsors get their photo and office details (and older ones a monthly refresh).
     counts["members_synced"] = await legislators.sync_members(db, api, limit=settings.ingest_max_members_per_run)
+    # Their photos get a BlurHash placeholder (one free image download each).
+    try:
+        counts["blurhashes"] = await blurhash.backfill(db, limit=settings.ingest_max_members_per_run)
+    except Exception:
+        await db.rollback()
+        log.exception("Failed to compute photo placeholders")
 
     # Step 7: save our position. Once the window is exhausted, the next run starts where it ended.
     offset = start + len(listed)

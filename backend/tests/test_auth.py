@@ -49,15 +49,41 @@ async def test_endpoints_require_auth(client):
         assert (await client.get(path)).status_code == 401
 
 
-async def test_onboarding_requires_5_to_10_valid_tags(client):
+async def test_onboarding_topics_are_optional_but_valid(client):
     headers = await signup(client, tags=None)
-    r = await client.patch("/users/me", json={"onboarding_tags": ["Health"]}, headers=headers)
+    r = await client.patch("/users/me", json={"onboarding_tags": ["Health", "Nope"]}, headers=headers)
     assert r.status_code == 422
-    r = await client.patch("/users/me", json={"onboarding_tags": ["Health", "Nope", "Law", "Energy", "Animals"]},
-                           headers=headers)
+    from app.taxonomy import POLICY_AREAS
+
+    r = await client.patch("/users/me", json={"onboarding_tags": POLICY_AREAS[:11]}, headers=headers)
     assert r.status_code == 422
+    # Skipping (no topics) finishes onboarding: signing in again doesn't ask again.
+    assert (await client.patch("/users/me", json={"onboarding_tags": []}, headers=headers)).status_code == 200
+    r = await client.post("/auth/login", json={"email": "tester@example.com", "password": "password123"})
+    assert r.json()["needs_onboarding"] is False
 
 
 async def test_google_disabled_without_client_id(client):
     r = await client.post("/auth/google", json={"id_token": "x"})
     assert r.status_code == 501
+
+
+async def test_delete_account_removes_everything_and_fixes_counts(client, db):
+    from app.models import Bill, User
+    from tests.factories import make_bill
+
+    bill = await make_bill(db)
+    me = await signup(client, "leaver")
+    other = await signup(client, "stayer")
+    await client.post(f"/bills/{bill.id}/vote", json={"value": 1}, headers=me)
+    await client.post(f"/bills/{bill.id}/vote", json={"value": 1}, headers=other)
+    await client.post(f"/bills/{bill.id}/comments", json={"body": "bye"}, headers=me)
+
+    assert (await client.delete("/users/me", headers=me)).status_code == 204
+    assert (await client.get("/users/me", headers=me)).status_code == 401
+    await db.refresh(await db.get(Bill, bill.id))
+    fresh = await db.get(Bill, bill.id)
+    assert fresh.net_score == 1 and fresh.comment_count == 0
+    from sqlalchemy import select
+
+    assert await db.scalar(select(User).where(User.display_name == "leaver")) is None

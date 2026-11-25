@@ -95,8 +95,8 @@ class MeUpdate(BaseModel):
         if v is None:
             return v
         v = _check_tags(v)
-        if not 5 <= len(v) <= 10:
-            raise ValueError("Pick between 5 and 10 topics")
+        if len(v) > 10:
+            raise ValueError("Pick up to 10 topics")
         return v
 
 
@@ -191,6 +191,7 @@ class LegislatorBase(BaseModel):
     district: int | None
     chamber: str | None
     image_url: str | None
+    image_blurhash: str | None = None
 
 
 class CareerSpan(BaseModel):

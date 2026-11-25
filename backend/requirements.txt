@@ -14,3 +14,5 @@ httpx>=0.27
 openai>=1.40
 google-auth>=2.30
 beautifulsoup4>=4.12
+blurhash-python>=1.2
+pillow>=10.0

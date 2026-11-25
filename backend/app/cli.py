@@ -8,6 +8,7 @@
   python -m app.cli backfill-timelines   # build every bill's timeline from its actions (free)
   python -m app.cli sync-members  # refresh every legislator's photo, career, and office (free)
   python -m app.cli sync-roster   # mark who's serving now, adding members with no bills yet (free)
+  python -m app.cli backfill-blurhash  # add photo placeholders for legislators missing one (free)
   python -m app.cli build-maps    # rebuild app/data/maps from Census boundaries (free; dev requirements)
   python -m app.cli make-moderator <display_name>    # give someone the moderation dashboard
   python -m app.cli remove-moderator <display_name>
@@ -201,6 +202,9 @@ async def main(cmd: str, *args: str) -> None:
             await backfill_cosponsors(db)
         elif cmd == "backfill-timelines":
             await backfill_timelines(db)
+        elif cmd == "backfill-blurhash":
+            from app.services import blurhash
+            print(f"Added {await blurhash.backfill(db)} photo placeholders.")
         elif cmd in ("make-moderator", "remove-moderator") and len(args) == 1:
             await set_moderator(db, args[0], cmd == "make-moderator")
         elif cmd in ("sync-members", "sync-roster"):

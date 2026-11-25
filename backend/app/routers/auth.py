@@ -29,7 +29,7 @@ async def _tokens(redis, user: User) -> TokensOut:
         access_token=create_access_token(user.id),
         refresh_token=await create_refresh_token(redis, user.id),
         needs_display_name=not user.display_name,
-        needs_onboarding=not user.onboarding_tags,
+        needs_onboarding=not (user.onboarded or user.onboarding_tags),
     )
 
 

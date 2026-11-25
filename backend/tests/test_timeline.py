@@ -85,8 +85,9 @@ async def test_search_by_status(client, db):
     assert (await client.get("/search", params={"stage": "nope"}, headers=h)).status_code == 422
 
     counts = {s["key"]: s["bill_count"] for s in (await client.get("/stages", headers=h)).json()}
-    assert counts == {"law": 1, "president": 0, "senate": 1, "house": 1, "committee": 1, "vetoed": 0}
+    # "passed" overlaps the others (any bill past one chamber), so it isn't part of a total.
+    assert counts == {"law": 1, "president": 0, "senate": 1, "house": 1, "committee": 1, "vetoed": 0, "passed": 4}
     # Counts follow the other filters: only the Senate bill is in that chamber.
     r = await client.get("/stages", params={"chamber": "senate"}, headers=h)
     assert {s["key"]: s["bill_count"] for s in r.json()}["house"] == 1
-    assert sum(s["bill_count"] for s in r.json()) == 1
+    assert sum(s["bill_count"] for s in r.json() if s["key"] != "passed") == 1

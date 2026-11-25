@@ -1,3 +1,4 @@
+import re
 import uuid
 from dataclasses import dataclass
 from typing import Annotated, Literal
@@ -5,6 +6,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import case, delete, exists, func, literal_column, or_, select
 
+from app import search_terms
 from app.config import settings
 from app.deps import DB, CurrentUser, RedisDep
 from app.models import Bill, BillCosponsor, BillFollow, InteractionType, Legislator, SummaryReport, Vote
@@ -37,8 +39,10 @@ STAGES = {
     "house": Bill.bill_type.in_(("S", "SJRES", "SCONRES")) & (Bill.status == "passed_senate"),
     "committee": Bill.status == "in_committee",
     "vetoed": Bill.status == "vetoed",
+    # Cumulative: passed at least one chamber, wherever it went next.
+    "passed": Bill.status.in_(("passed_house", "passed_senate", "to_president", "became_law", "vetoed")),
 }
-Stage = Literal["law", "president", "senate", "house", "committee", "vetoed"]
+Stage = Literal["law", "president", "senate", "house", "committee", "vetoed", "passed"]
 
 TS_CONFIG = literal_column("'english'::regconfig")
 # Matches in a search snippet are wrapped in these control characters, which never occur in bill text.
@@ -47,6 +51,8 @@ SNIPPET_OPTIONS = (
     f'MaxFragments=2, MaxWords=22, MinWords=10, FragmentDelimiter=" … ", StartSel={MARK_START}, StopSel={MARK_END}'
 )
 SNIPPET_TEXT_CHARS = 100_000  # ts_headline re-parses the text, so keep it to the start of long bills
+# Passages that are only a bill's legal preamble say nothing useful; the card shows the summary instead.
+BOILERPLATE = re.compile(r"short title|cited as|be it enacted|table of contents", re.I)
 
 
 async def _published_bill(db, bill_id: uuid.UUID) -> Bill:
@@ -87,10 +93,23 @@ class BillFilters:
     def term(self) -> str:
         return (self.q or "").strip().lstrip("#").strip()
 
+    # Set by resolve_looseness() when the search, taken strictly, finds nothing.
+    loose = False
+
     @property
     def tsquery(self):
-        """The search words as a Postgres full-text query ("quoted phrases" and -excluded words work)."""
-        return func.websearch_to_tsquery(TS_CONFIG, self.term)
+        """The search words as a Postgres full-text query ("quoted phrases" and -excluded words work), widened
+        with everyday synonyms ("climate" also finds "greenhouse gas"), and any-word when `loose`."""
+        term = search_terms.loosen(self.term) if self.loose else self.term
+        return func.websearch_to_tsquery(TS_CONFIG, search_terms.expand(term))
+
+    def number_match(self):
+        """Matches a bill number typed as the search ("H.R. 1037", "hr1037", "1037"), or nothing."""
+        parsed = search_terms.bill_number(self.term)
+        if not parsed:
+            return None
+        bill_type, number = parsed
+        return (Bill.bill_number == number) & (Bill.bill_type == bill_type) if bill_type else Bill.bill_number == number
 
     def text_match(self):
         """Matches the words in the title, either summary, or the full text (stemmed, so "taxes" finds "tax")."""
@@ -117,7 +136,9 @@ class BillFilters:
         if self.term:
             pattern = like_pattern(self.term)
             named = select(Legislator.bioguide_id).where(name_matches(pattern))
+            number = self.number_match()
             conds.append(or_(
+                *([number] if number is not None else []),
                 self.title_or_hashtag(),
                 self.text_match(),
                 Bill.sponsor_name.ilike(pattern, escape="\\"),
@@ -130,9 +151,19 @@ class BillFilters:
 Filters = Annotated[BillFilters, Depends()]
 
 
+async def resolve_looseness(db, filters: BillFilters) -> None:
+    """Searches match every word by default. When that finds nothing (within the other filters), fall back to
+    any word, so "student debt relief" still finds student loan bills instead of an empty page."""
+    if not filters.term or len(filters.term.split()) < 2:
+        return
+    if not await db.scalar(select(exists().where(*filters.conditions()))):
+        filters.loose = True
+
+
 @router.get("/stages", response_model=list[StageOut])
 async def stage_counts(db: DB, _: CurrentUser, filters: Filters):
     """How many published bills each status filter matches, within the other active filters."""
+    await resolve_looseness(db, filters)
     row = (await db.execute(
         select(*(func.count().filter(cond) for cond in STAGES.values())).where(*filters.conditions())
     )).one()
@@ -170,11 +201,14 @@ async def search(
     match words in the title, any hashtag, either summary, the full text, or a sponsor's or cosponsor's
     name. Title and hashtag matches rank first, then the best full-text matches, then name matches.
     Bills matched by their summaries or text come with a `snippet` showing where."""
+    await resolve_looseness(db, filters)
     stmt = select(Bill).where(*filters.conditions())
     if stage:
         stmt = stmt.where(STAGES[stage])
     if filters.term:
+        number = filters.number_match()
         stmt = stmt.order_by(
+            *([case((number, 0), else_=1)] if number is not None else []),  # an exact bill number first
             case((filters.title_or_hashtag(), 0), else_=1),
             func.ts_rank_cd(Bill.search_vector, filters.tsquery).desc(),
             func.similarity(Bill.title, filters.term).desc(),
@@ -197,11 +231,12 @@ async def _snippets(db, filters: BillFilters, ids: list[uuid.UUID]) -> dict[uuid
     )
     rows = await db.execute(
         select(Bill.id, func.ts_headline(TS_CONFIG, body, filters.tsquery, SNIPPET_OPTIONS))
-        .where(Bill.id.in_(ids), filters.text_match())
+        # A bill whose title or hashtag matched already says why it's here; its card shows the summary instead.
+        .where(Bill.id.in_(ids), filters.text_match(), ~filters.title_or_hashtag())
     )
     return {
         bill_id: {"snippet": " ".join(text.split())}
-        for bill_id, text in rows if text and MARK_START in text
+        for bill_id, text in rows if text and MARK_START in text and not BOILERPLATE.search(text)
     }
 
 

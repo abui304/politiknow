@@ -183,6 +183,8 @@ def apply_member(legislator: Legislator, member: dict) -> None:
     depiction = member.get("depiction") or {}
     info = member.get("addressInformation") or {}
     legislator.state_name = member.get("state")
+    if depiction.get("imageUrl") != legislator.image_url:
+        legislator.image_blurhash = None  # recomputed for the new photo by blurhash.backfill
     legislator.image_url = depiction.get("imageUrl")
     # Attribution comes as HTML, e.g. '<a href="...">Courtesy U.S. Senate Historical Office</a>'.
     legislator.image_credit = re.sub(r"<[^>]+>", "", depiction.get("attribution") or "").strip()[:255] or None

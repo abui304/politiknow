@@ -4,10 +4,11 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import delete, func, select
 
 from app.deps import DB, CurrentUser, IncompleteUser
-from app.models import Bill, BillFollow, Comment, Follow, Legislator, LegislatorFollow, User
+from app.models import Bill, BillFollow, Comment, CommentVote, Follow, Legislator, LegislatorFollow, User, Vote
 from app.routers.auth import display_name_taken
 from app.schemas import CommentWithBill, FollowingOut, LegislatorBase, MeOut, MeUpdate, NotificationPrefs, ProfileOut
 from app.serializers import bills_out, comments_out, visible_comments
+from app.services import moderation
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -52,12 +53,32 @@ async def update_me(body: MeUpdate, db: DB, user: IncompleteUser):
         user.display_name = body.display_name
     if "onboarding_tags" in fields and body.onboarding_tags is not None:
         user.onboarding_tags = body.onboarding_tags
+        user.onboarded = True
     if "notification_preferences" in fields and body.notification_preferences:
         user.notification_preferences = body.notification_preferences.model_dump(mode="json")
     if "push_token" in fields:
         user.push_token = body.push_token
     await db.commit()
     return await _me(db, user)
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_me(db: DB, user: IncompleteUser):
+    """Deletes the signed-in account and everything attached to it (comments, votes, follows, alerts,
+    reports, saved district). Bill and comment scores and comment counts are recalculated without them."""
+    commented_on = set(await db.scalars(select(Comment.bill_id).where(Comment.user_id == user.id)))
+    voted_on = set(await db.scalars(select(Vote.bill_id).where(Vote.user_id == user.id)))
+    comments_voted = set(await db.scalars(select(CommentVote.comment_id).where(CommentVote.user_id == user.id)))
+    await db.delete(user)  # foreign keys cascade
+    await db.flush()
+    for bill in await db.scalars(select(Bill).where(Bill.id.in_(commented_on | voted_on))):
+        bill.net_score = await db.scalar(select(func.coalesce(func.sum(Vote.value), 0)).where(Vote.bill_id == bill.id))
+        if bill.id in commented_on:
+            await moderation.recount_comments(db, bill)
+    for comment in await db.scalars(select(Comment).where(Comment.id.in_(comments_voted))):
+        comment.net_score = await db.scalar(
+            select(func.coalesce(func.sum(CommentVote.value), 0)).where(CommentVote.comment_id == comment.id))
+    await db.commit()
 
 
 @router.get("/me/following", response_model=FollowingOut)
