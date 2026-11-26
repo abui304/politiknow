@@ -57,3 +57,33 @@ async def test_passed_a_chamber_is_cumulative(client, db):
     h = await signup(client)
     passed = sorted(await _search(client, h, stage="passed"))
     assert passed == ["Bill became_law", "Bill passed_house", "Bill to_president"]
+
+
+def test_everyday_words_find_their_topics():
+    from app.taxonomy import POLICY_AREAS
+    from app.topic_words import TOPIC_WORDS, topics_for
+
+    assert set(TOPIC_WORDS) == set(POLICY_AREAS)
+    assert topics_for("abortion")[0] == "Health"
+    assert "Social Welfare" in topics_for("Social Security")
+    assert topics_for("abort")  # partial words work
+    assert topics_for("x") == []
+
+
+async def test_tags_come_with_everyday_words(client):
+    h = await signup(client)
+    tags = {t["name"]: t["words"] for t in (await client.get("/tags", headers=h)).json()}
+    assert "medicare" in tags["Health"]
+
+
+async def test_related_bills_share_subjects_or_topic(client, db):
+    base = await make_bill(db, tags=("Health",), title="Insulin Price Cap Act")
+    base.sub_tags = ["insulin", "medicare"]
+    twin = await make_bill(db, tags=("Taxation",), title="Diabetes Supply Tax Credit Act")
+    twin.sub_tags = ["Insulin"]
+    cousin = await make_bill(db, tags=("Health",), title="Rural Hospital Act")
+    await make_bill(db, tags=("Energy",), title="Grid Act")
+    await db.commit()
+    h = await signup(client)
+    titles = [b["title"] for b in (await client.get(f"/bills/{base.id}/related", headers=h)).json()]
+    assert titles[0] == twin.title and cousin.title in titles and "Grid Act" not in titles

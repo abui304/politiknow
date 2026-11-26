@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import case, delete, exists, func, literal_column, or_, select
+from sqlalchemy import ARRAY, Text, case, delete, exists, func, literal_column, or_, select
 
 from app import search_terms
 from app.config import settings
@@ -27,6 +27,7 @@ from app.services import feed as feed_service
 from app.services import hashtags, interactions
 from app.services.legislators import PARTY_CODES, like_pattern, name_matches
 from app.taxonomy import POLICY_AREAS
+from app.topic_words import TOPIC_WORDS
 
 router = APIRouter(tags=["bills"])
 
@@ -64,7 +65,7 @@ async def _published_bill(db, bill_id: uuid.UUID) -> Bill:
 
 @router.get("/tags", response_model=list[TagOut])
 async def list_tags(_: CurrentUser):
-    return [TagOut(name=name) for name in POLICY_AREAS]
+    return [TagOut(name=name, words=TOPIC_WORDS[name]) for name in POLICY_AREAS]
 
 
 @router.get("/hashtags", response_model=list[HashtagOut])
@@ -244,6 +245,30 @@ async def _snippets(db, filters: BillFilters, ids: list[uuid.UUID]) -> dict[uuid
 async def get_bill(bill_id: uuid.UUID, db: DB, user: CurrentUser):
     bill = await _published_bill(db, bill_id)
     return (await bills_out(db, user, [bill]))[0]
+
+
+@router.get("/bills/{bill_id}/related", response_model=list[BillOut])
+async def related_bills(bill_id: uuid.UUID, db: DB, user: CurrentUser, limit: int = Query(4, le=10)):
+    """Bills about the same thing: sharing the bill's specific subjects (its hidden keywords) counts most,
+    then a similar title, within the same official topic. Replaces browsing by hashtag."""
+    bill = await _published_bill(db, bill_id)
+    keywords = [k.lower() for k in bill.sub_tags or []]
+    shared = (
+        select(func.count())
+        .select_from(func.jsonb_array_elements_text(Bill.sub_tags).table_valued("value").alias("k"))
+        .where(func.lower(literal_column("k.value")).in_(keywords))
+        .scalar_subquery()
+        if keywords else literal_column("0")
+    )
+    same_topic = Bill.primary_tags.op("?|")(func.cast(bill.primary_tags or [""], ARRAY(Text)))
+    score = shared * 2 + func.similarity(Bill.title, bill.title) * 3
+    stmt = (
+        select(Bill)
+        .where(Bill.is_published.is_(True), Bill.id != bill.id, or_(same_topic, shared > 0))
+        .order_by(score.desc(), Bill.last_action_date.desc().nulls_last())
+        .limit(limit)
+    )
+    return await bills_out(db, user, list(await db.scalars(stmt)))
 
 
 @router.get("/bills/{bill_id}/text", response_model=BillText)

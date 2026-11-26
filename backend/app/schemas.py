@@ -336,6 +336,7 @@ class NotificationOut(BaseModel):
 
 class TagOut(BaseModel):
     name: str
+    words: list[str] = []  # everyday words for this topic, e.g. Health: medicare, abortion, insulin...
 
 
 class HashtagOut(BaseModel):
