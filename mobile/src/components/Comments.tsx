@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, LayoutAnimationConfig, LinearTransition } from 'react-native-reanimated';
 
 import { timeAgo } from '@/lib/format';
 import { newRequestKey } from '@/lib/api';
@@ -93,7 +93,9 @@ export function CommentsSection({ billId }: { billId: string }) {
           <RowSkeleton />
         </>
       ) : comments?.length ? (
-        comments.map((c) => (
+        // Comments already there when the page opens just appear; only ones added or removed while you're here animate.
+        <LayoutAnimationConfig skipEntering>
+        {comments.map((c) => (
           // New comments fade in, deleted ones fade out, and the rest slide to their new places.
           <Animated.View key={c.id} style={{ gap: space.sm }} entering={FadeIn} exiting={FadeOut} layout={LinearTransition}>
             <CommentItem comment={c} billId={billId} onReply={() => reply(c)} />
@@ -103,7 +105,8 @@ export function CommentsSection({ billId }: { billId: string }) {
               </Animated.View>
             ))}
           </Animated.View>
-        ))
+        ))}
+        </LayoutAnimationConfig>
       ) : (
         <View style={styles.empty}>
           <Txt style={[type.small, { textAlign: 'center' }]}>No comments yet</Txt>

@@ -152,24 +152,29 @@ export function Card({ children, style }: { children: ReactNode; style?: StylePr
 
 /**
  * A number that rolls to its new value: the old one slides out and the new one in, upward when it went up
- * and downward when it went down, so a vote visibly lands. Instant under Reduce Motion.
+ * and downward when it went down, so a vote visibly lands. It only rolls when `live` is set (the person just
+ * acted on it); numbers appearing on screen or refreshing from the server change in place, without motion.
+ * Instant under Reduce Motion.
  */
-export function CountRoll({ value, style }: { value: number; style?: TextProps['style'] }) {
+export function CountRoll({ value, style, live = false }: { value: number; style?: TextProps['style']; live?: boolean }) {
   const [prev, setPrev] = useState(value);
   const [dir, setDir] = useState<1 | -1>(1);
+  const [rolled, setRolled] = useState(false);
   const reduce = useReducedMotion();
   if (value !== prev) {
     setDir(value > prev ? 1 : -1);
     setPrev(value);
+    setRolled(live);
   }
+  const animate = rolled && !reduce;
   const enter = dir === 1 ? FadeInDown : FadeInUp;
   const exit = dir === 1 ? FadeOutUp : FadeOutDown;
   return (
     <View style={{ overflow: 'hidden' }} accessibilityLiveRegion="polite">
       <Animated.Text
         key={value}
-        entering={reduce ? undefined : enter.duration(motion.base)}
-        exiting={reduce ? undefined : exit.duration(motion.fast)}
+        entering={animate ? enter.duration(motion.base) : undefined}
+        exiting={animate ? exit.duration(motion.fast) : undefined}
         style={style}>
         {value}
       </Animated.Text>
