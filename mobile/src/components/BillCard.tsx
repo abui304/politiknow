@@ -1,17 +1,19 @@
 import { useQueryClient } from '@tanstack/react-query';
+import * as Haptics from 'expo-haptics';
 import { Link } from 'expo-router';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import type { ReactNode } from 'react';
+import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 
 import { plainText, shortDate, truncate } from '@/lib/format';
 import { prefetchBill, useFollowBill, useVoteBill } from '@/lib/queries';
 import { shareBill } from '@/lib/share';
 import { toast, toastError, toastUndo } from '@/lib/toast';
 import type { Bill } from '@/lib/types';
-import { colors, figures, fonts, onAlpha, outline, partyColors, radius, space, type } from '@/theme';
+import { colors, figures, fonts, motion, onAlpha, outline, partyColors, radius, space, spring, type } from '@/theme';
 
 import { BillTimeline } from './BillTimeline';
-import { Chip, Icon, Tap, Txt } from './ui';
+import { Chip, CountRoll, Icon, Tap, Txt } from './ui';
 
 /** On iOS 18+, the card's colored header zooms into the bill page's header when the card is opened.
  *  Elsewhere the normal page transition runs. */
@@ -37,7 +39,33 @@ export function ZoomTarget({ children }: { children: ReactNode }) {
   );
 }
 
-/** Up and down votes on a party-colored bar. The chosen arrow sits in a filled circle of the bar's text color. */
+/**
+ * An arrow that answers the tap: a quick pop when chosen, a light haptic tick, and the fill settles in.
+ * The pop is a spring, so tapping again mid-pop carries on from where it is. Reduce Motion skips the pop.
+ */
+function VoteArrow({ dir, on, bill, onPress }: { dir: 1 | -1; on: boolean; bill: Bill; onPress: () => void }) {
+  const p = partyColors(bill.sponsor_party);
+  const scale = useSharedValue(1);
+  const reduce = useReducedMotion();
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
+  return (
+    <Tap
+      onPress={() => {
+        if (!on && !reduce) scale.set(withSequence(withTiming(1.25, { duration: motion.fast }), withSpring(1, spring)));
+        if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        onPress();
+      }}
+      accessibilityLabel={dir === 1 ? 'Upvote this bill' : 'Downvote this bill'}
+      accessibilityState={{ selected: on }}
+      style={[styles.voteBtn, on && { backgroundColor: p.on }]}>
+      <Animated.View style={style}>
+        <Icon name={dir === 1 ? 'arrow-up' : 'arrow-down'} size={18} color={on ? p.main : p.on} />
+      </Animated.View>
+    </Tap>
+  );
+}
+
+/** Up and down votes on a party-colored bar. The chosen arrow sits in a filled circle; the score rolls to its new value. */
 export function VoteControl({ bill }: { bill: Bill }) {
   const vote = useVoteBill();
   const p = partyColors(bill.sponsor_party);
@@ -46,25 +74,11 @@ export function VoteControl({ bill }: { bill: Bill }) {
       { id: bill.id, value: bill.my_vote === v ? 0 : v, before: { net_score: bill.net_score, my_vote: bill.my_vote } },
       { onError: toastError },
     );
-  const arrow = (v: -1 | 1) => {
-    const on = bill.my_vote === v;
-    return (
-      <Tap
-        onPress={() => cast(v)}
-        accessibilityLabel={v === 1 ? 'Upvote this bill' : 'Downvote this bill'}
-        accessibilityState={{ selected: on }}
-        style={[styles.voteBtn, on && { backgroundColor: p.on }]}>
-        <Icon name={v === 1 ? 'arrow-up' : 'arrow-down'} size={18} color={on ? p.main : p.on} />
-      </Tap>
-    );
-  };
   return (
-    <View style={styles.vote}>
-      {arrow(1)}
-      <Text style={[styles.score, { color: p.on }]} accessibilityLabel={`Score ${bill.net_score}`}>
-        {bill.net_score}
-      </Text>
-      {arrow(-1)}
+    <View style={styles.vote} accessibilityLabel={`Score ${bill.net_score}`}>
+      <VoteArrow dir={1} on={bill.my_vote === 1} bill={bill} onPress={() => cast(1)} />
+      <CountRoll value={bill.net_score} style={[styles.score, { color: p.on }]} />
+      <VoteArrow dir={-1} on={bill.my_vote === -1} bill={bill} onPress={() => cast(-1)} />
     </View>
   );
 }
@@ -198,7 +212,7 @@ export function BillCard({ bill }: { bill: Bill }) {
         <Link href={href} asChild>
           <Tap onPressIn={prefetch} style={styles.footerBtn} accessibilityRole="link" accessibilityLabel={`Read ${bill.comment_count} ${bill.comment_count === 1 ? 'comment' : 'comments'}`}>
             <Icon name="message-circle" size={16} color={p.on} />
-            <Text style={[styles.footerText, styles.count, { color: p.on }]}>{bill.comment_count}</Text>
+            <CountRoll value={bill.comment_count} style={[styles.footerText, styles.count, { color: p.on }]} />
           </Tap>
         </Link>
         <FollowBillButton bill={bill} />

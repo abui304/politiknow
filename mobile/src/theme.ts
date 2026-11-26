@@ -19,15 +19,17 @@ export const colors = {
 
   success: '#22774F',
   warning: '#8F5F00',
-  danger: '#C83237', // the Republican red's hue, so red means one thing visually
+  danger: '#BA2B2E', // the Republican red, so red means one thing visually
 };
 
 // Full-card party colors. `on` is the text and icon color that reads on `main`.
 export const party: Record<string, { main: string; soft: string; on: string; label: string }> = {
-  D: { main: '#3C61DD', soft: '#E8EDFC', on: '#FFFFFF', label: 'Democrat' },
-  R: { main: '#C83237', soft: '#FCE9E9', on: '#FFFFFF', label: 'Republican' },
-  I: { main: '#F0A919', soft: '#FCF2DE', on: '#2B2622', label: 'Independent' },
-  ID: { main: '#F0A919', soft: '#FCF2DE', on: '#2B2622', label: 'Independent' },
+  // Balanced by perceived (OKLCH) lightness: blue 0.50 and red 0.52 carry the same weight; yellow can't be that
+  // dark without turning brown, so it's toned down in saturation (0.78, chroma 0.14) to sit at a similar weight.
+  D: { main: '#3056CD', soft: '#E8F0FF', on: '#FFFFFF', label: 'Democrat' },
+  R: { main: '#BA2B2E', soft: '#FFEAE8', on: '#FFFFFF', label: 'Republican' },
+  I: { main: '#E8AB3E', soft: '#FFF1DA', on: '#2B2622', label: 'Independent' },
+  ID: { main: '#E8AB3E', soft: '#FFF1DA', on: '#2B2622', label: 'Independent' },
   other: { main: '#635C54', soft: '#F2EDE8', on: '#FFFFFF', label: 'Other' },
 };
 
@@ -91,3 +93,5 @@ export const spring = { damping: 26, stiffness: 320, mass: 1 };
 
 /** Max width of the app column; on desktop web the app renders as a centered phone-sized column. */
 export const APP_MAX_WIDTH = 520;
+/** The reading column on desktop: about 70 characters of body text, with room for a bill's header. */
+export const PAGE_MAX_WIDTH = 720;

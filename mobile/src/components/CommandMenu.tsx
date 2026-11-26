@@ -9,21 +9,61 @@ import { APP_MAX_WIDTH, colors, float, fonts, outline, partyColors, radius, spac
 import { Icon, type IconName, Keycap, MOD_KEY, Tap, Txt } from './ui';
 
 /** Open or close the command menu from anywhere. */
-export const useCommandMenu = create<{ open: boolean; set: (open: boolean) => void }>((set) => ({
+export const useCommandMenu = create<{
+  open: boolean;
+  set: (open: boolean) => void;
+}>((set) => ({
   open: false,
   set: (open) => set({ open }),
 }));
 
-type Item = { key: string; icon: IconName; label: string; detail?: string; href: Href; dot?: string };
+type Item = {
+  key: string;
+  icon: IconName;
+  label: string;
+  detail?: string;
+  href: Href;
+  dot?: string;
+};
 
 const PAGES: Item[] = [
-  { key: 'p-feed', icon: 'home', label: 'Feed', detail: 'Bills picked for you', href: '/' },
-  { key: 'p-search', icon: 'search', label: 'Search bills', detail: 'Find by words, topic, status or party', href: '/search' },
-  { key: 'p-floor', icon: 'calendar', label: 'This week on the floor', detail: 'What the House and Senate vote on next', href: '/calendar' },
+  {
+    key: 'p-feed',
+    icon: 'home',
+    label: 'Feed',
+    detail: 'Bills picked for you',
+    href: '/',
+  },
+  {
+    key: 'p-search',
+    icon: 'search',
+    label: 'Search bills',
+    detail: 'Find by words, topic, status or party',
+    href: '/search',
+  },
+  {
+    key: 'p-floor',
+    icon: 'calendar',
+    label: 'This week on the floor',
+    detail: 'What the House and Senate vote on next',
+    href: '/calendar',
+  },
   { key: 'p-alerts', icon: 'bell', label: 'Alerts', href: '/notifications' },
-  { key: 'p-map', icon: 'map', label: 'Your map', detail: 'Your district and the ones you follow', href: '/map' },
+  {
+    key: 'p-map',
+    icon: 'map',
+    label: 'Your map',
+    detail: 'Your district and the ones you follow',
+    href: '/map',
+  },
   { key: 'p-me', icon: 'user', label: 'Your profile', href: '/profile' },
-  { key: 'p-settings', icon: 'settings', label: 'Settings', detail: 'Topics, alerts, display name', href: '/settings' },
+  {
+    key: 'p-settings',
+    icon: 'settings',
+    label: 'Settings',
+    detail: 'Topics, alerts, display name',
+    href: '/settings',
+  },
 ];
 
 /**
@@ -39,7 +79,13 @@ export function CommandMenu() {
   const usingKeys = useRef(false);
   const term = q.trim();
   const searching = term.length >= 2;
-  const bills = useSearch({ q: searching ? term : '', tag: null, hashtag: null, party: null, chamber: null, stage: null });
+  const bills = useSearch({
+    q: searching ? term : '',
+    tag: null,
+    party: null,
+    chamber: null,
+    stage: null,
+  });
   const { data: people } = useLegislators(searching ? term : '', null, null);
 
   const items = useMemo(() => {
@@ -64,7 +110,12 @@ export function CommandMenu() {
           href: { pathname: '/legislator/[id]', params: { id: l.bioguide_id } },
         }))
       : [];
-    return { pages, billItems, personItems, all: [...pages, ...billItems, ...personItems] };
+    return {
+      pages,
+      billItems,
+      personItems,
+      all: [...pages, ...billItems, ...personItems],
+    };
   }, [term, searching, bills.data, people]);
 
   const close = () => {
@@ -120,7 +171,12 @@ export function CommandMenu() {
                   {item.label}
                 </Text>
                 {item.detail ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: space.xs,
+                    }}>
                     {item.dot ? <View style={[styles.dot, { backgroundColor: item.dot }]} /> : null}
                     <Text style={type.meta} numberOfLines={1}>
                       {item.detail}
@@ -186,13 +242,58 @@ export function CommandMenu() {
 }
 
 const styles = StyleSheet.create({
-  backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(43,38,34,0.32)' },
-  host: { flex: 1, alignItems: 'center', paddingTop: 96, paddingHorizontal: space.lg },
-  panel: { width: '100%', maxWidth: APP_MAX_WIDTH, backgroundColor: colors.bg, overflow: 'hidden', ...outline(radius.lg) },
-  inputRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, borderBottomWidth: 1, borderBottomColor: colors.line },
-  input: { flex: 1, height: 52, fontFamily: fonts.regular, fontSize: 16, color: colors.ink },
-  section: { ...type.meta, paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.xs },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.sm, marginHorizontal: space.xs, borderRadius: radius.sm, borderCurve: 'continuous' },
+  backdrop: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: 'rgba(43,38,34,0.32)',
+  },
+  host: {
+    flex: 1,
+    alignItems: 'center',
+    paddingTop: 96,
+    paddingHorizontal: space.lg,
+  },
+  panel: {
+    width: '100%',
+    maxWidth: APP_MAX_WIDTH,
+    backgroundColor: colors.bg,
+    overflow: 'hidden',
+    ...outline(radius.lg),
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingHorizontal: space.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
+  },
+  input: {
+    flex: 1,
+    height: 52,
+    fontFamily: fonts.regular,
+    fontSize: 16,
+    color: colors.ink,
+  },
+  section: {
+    ...type.meta,
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    paddingBottom: space.xs,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    marginHorizontal: space.xs,
+    borderRadius: radius.sm,
+    borderCurve: 'continuous',
+  },
   rowOn: { backgroundColor: colors.surfaceAlt },
   label: { ...type.body },
   dot: { width: 8, height: 8, borderRadius: 4 },

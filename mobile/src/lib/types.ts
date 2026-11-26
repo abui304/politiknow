@@ -101,7 +101,11 @@ export type LegislatorBase = {
   image_blurhash?: string | null;
 };
 
-export type CareerSpan = { chamber: Chamber; start: number | null; end: number | null };
+export type CareerSpan = {
+  chamber: Chamber;
+  start: number | null;
+  end: number | null;
+};
 
 export type Legislator = LegislatorBase & {
   in_office: boolean;
@@ -123,7 +127,13 @@ export type StateMap = {
   height: number;
   outline: string;
   districts: Record<string, { path: string; bbox: [number, number, number, number] }>;
-  cities: { name: string; x: number; y: number; pop: number; district: string | null }[];
+  cities: {
+    name: string;
+    x: number;
+    y: number;
+    pop: number;
+    district: string | null;
+  }[];
 };
 
 /** /maps/US: every state and district in one Albers USA layout (Alaska, Hawaii, Puerto Rico inset). */
@@ -131,7 +141,15 @@ export type NationalMap = {
   width: number;
   height: number;
   /** label: where the state's code goes; tag: for small states, a callout off the coast instead. */
-  states: Record<string, { name: string; path: string; label: [number, number]; tag: [number, number] | null }>;
+  states: Record<
+    string,
+    {
+      name: string;
+      path: string;
+      label: [number, number];
+      tag: [number, number] | null;
+    }
+  >;
   /** Keyed "WA-8"; 0 is an at-large seat or delegate. */
   districts: Record<string, string>;
 };
@@ -153,9 +171,17 @@ export type District = {
   is_following: boolean;
 };
 
-export type StateDistricts = { state: string; name: string; senators: LegislatorBase[]; districts: District[] };
+export type StateDistricts = {
+  state: string;
+  name: string;
+  senators: LegislatorBase[];
+  districts: District[];
+};
 
-export type Representatives = { home: District | null; senators: LegislatorBase[] };
+export type Representatives = {
+  home: District | null;
+  senators: LegislatorBase[];
+};
 
 export type Following = { legislators: LegislatorBase[]; bills: Bill[] };
 
@@ -167,12 +193,21 @@ export type FloorItem = {
   bills: { label: string; bill_id: string | null }[];
 };
 
-export type FloorWeek = { week_of: string; house: FloorItem[]; senate: FloorItem[]; house_url: string; senate_url: string };
+export type FloorWeek = {
+  week_of: string;
+  house: FloorItem[];
+  senate: FloorItem[];
+  house_url: string;
+  senate_url: string;
+};
 
 export type FeedSort = 'for_you' | 'discussed';
 export type CommentSort = 'top' | 'new';
 
-export type Cosponsor = LegislatorBase & { is_original: boolean; sponsorship_date: string | null };
+export type Cosponsor = LegislatorBase & {
+  is_original: boolean;
+  sponsorship_date: string | null;
+};
 
 /** Search filter values; Independent also matches "ID" (Independent Democrat). */
 export type PartyFilter = 'D' | 'R' | 'I';
@@ -200,7 +235,10 @@ export type Comment = {
   replies: Comment[];
 };
 
-export type CommentWithBill = Comment & { bill_label: string; bill_title: string };
+export type CommentWithBill = Comment & {
+  bill_label: string;
+  bill_title: string;
+};
 
 export type AppNotification = {
   id: string;
@@ -212,9 +250,10 @@ export type AppNotification = {
   created_at: string;
 };
 
-export type Tag = { name: string };
-
-export type Hashtag = { name: string; bill_count: number };
+export type Tag = {
+  name: string;
+  /** Everyday words for this topic (medicare, abortion, insulin…), from the server. */ words: string[];
+};
 
 // ---------- moderation dashboard ----------
 

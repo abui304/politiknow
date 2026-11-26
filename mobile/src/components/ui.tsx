@@ -21,6 +21,10 @@ import {
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
+  FadeInDown,
+  FadeInUp,
+  FadeOutDown,
+  FadeOutUp,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -32,8 +36,9 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { hasKeyboard } from '@/lib/device';
+import { useWide } from '@/lib/layout';
 import { useToasts } from '@/lib/toast';
-import { APP_MAX_WIDTH, colors, figures, float, fonts, motion, outline, radius, space, spring, type } from '@/theme';
+import { APP_MAX_WIDTH, PAGE_MAX_WIDTH, colors, figures, float, fonts, motion, outline, radius, space, spring, type } from '@/theme';
 
 export type IconName = ComponentProps<typeof Feather>['name'];
 
@@ -56,13 +61,20 @@ export function Screen({
   scroll = false,
   padded = true,
   edges = ['top'],
+  width = 'page',
 }: {
   children: ReactNode;
   scroll?: boolean;
   padded?: boolean;
   edges?: ('top' | 'bottom')[];
+  /** On desktop: 'page' is a reading column, 'wide' leaves room for a second column beside it. */
+  width?: 'page' | 'wide';
 }) {
-  const inner = <View style={[styles.column, padded && { paddingHorizontal: space.lg }]}>{children}</View>;
+  const desktop = useWide();
+  const maxWidth = desktop ? (width === 'wide' ? 1120 : PAGE_MAX_WIDTH) : APP_MAX_WIDTH;
+  const inner = (
+    <View style={[styles.column, { maxWidth }, padded && { paddingHorizontal: desktop ? space.xl : space.lg }]}>{children}</View>
+  );
   return (
     <SafeAreaView style={styles.screen} edges={edges}>
       {scroll ? (
@@ -130,8 +142,39 @@ export function Title({ style, ...props }: TextProps) {
   );
 }
 
+/**
+ * A section of a page: content on the paper, set off by a hairline rule below, the way a printed record
+ * separates its parts. Not a floating box: the app keeps boxes for things you type into or press.
+ */
 export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   return <View style={[styles.card, style]}>{children}</View>;
+}
+
+/**
+ * A number that rolls to its new value: the old one slides out and the new one in, upward when it went up
+ * and downward when it went down, so a vote visibly lands. Instant under Reduce Motion.
+ */
+export function CountRoll({ value, style }: { value: number; style?: TextProps['style'] }) {
+  const [prev, setPrev] = useState(value);
+  const [dir, setDir] = useState<1 | -1>(1);
+  const reduce = useReducedMotion();
+  if (value !== prev) {
+    setDir(value > prev ? 1 : -1);
+    setPrev(value);
+  }
+  const enter = dir === 1 ? FadeInDown : FadeInUp;
+  const exit = dir === 1 ? FadeOutUp : FadeOutDown;
+  return (
+    <View style={{ overflow: 'hidden' }} accessibilityLiveRegion="polite">
+      <Animated.Text
+        key={value}
+        entering={reduce ? undefined : enter.duration(motion.base)}
+        exiting={reduce ? undefined : exit.duration(motion.fast)}
+        style={style}>
+        {value}
+      </Animated.Text>
+    </View>
+  );
 }
 
 /** A small key, for keyboard shortcut hints. Only shown where there's a keyboard to press (not on touch screens). */
@@ -158,14 +201,22 @@ export function Tap({ style, onPressIn, onPressOut, onPress, hitSlop = HIT_SLOP,
 }) {
   const scale = useSharedValue(1);
   const reduce = useReducedMotion();
-  const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
+  const animated = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.get() }],
+  }));
   return (
     <AnimatedPressable
       {...props}
       hitSlop={hitSlop}
       style={[style, animated]}
       onPressIn={(e) => {
-        if (!reduce) scale.set(withTiming(0.98, { duration: motion.fast, easing: Easing.out(Easing.cubic) }));
+        if (!reduce)
+          scale.set(
+            withTiming(0.98, {
+              duration: motion.fast,
+              easing: Easing.out(Easing.cubic),
+            }),
+          );
         onPressIn?.(e);
       }}
       onPressOut={(e) => {
@@ -200,7 +251,14 @@ type ButtonProps = {
 
 export function Button({ title, onPress, variant = 'primary', color, loading, disabled, icon, size, small, hint, style }: ButtonProps) {
   const s = size ?? (small ? 'small' : 'regular');
-  const bg = color ?? { primary: colors.ink, secondary: colors.surface, ghost: 'transparent', danger: colors.danger }[variant];
+  const bg =
+    color ??
+    {
+      primary: colors.ink,
+      secondary: colors.surface,
+      ghost: 'transparent',
+      danger: colors.danger,
+    }[variant];
   const fg = variant === 'secondary' || variant === 'ghost' ? colors.ink : '#fff';
   const inactive = disabled || loading;
   return (
@@ -210,7 +268,10 @@ export function Button({ title, onPress, variant = 'primary', color, loading, di
       accessibilityRole="button"
       accessibilityLabel={title}
       accessibilityHint={hint}
-      accessibilityState={{ disabled: Boolean(inactive), busy: Boolean(loading) }}
+      accessibilityState={{
+        disabled: Boolean(inactive),
+        busy: Boolean(loading),
+      }}
       style={[
         styles.button,
         s === 'small' && styles.buttonSmall,
@@ -258,7 +319,14 @@ export function Chip({
   const filled = selected ? (color ?? colors.ink) : undefined;
   const content = (
     <Text
-      style={[styles.chipText, small && styles.chipTextSmall, selected && { color: color ? colors.ink : '#fff', fontFamily: fonts.medium }]}
+      style={[
+        styles.chipText,
+        small && styles.chipTextSmall,
+        selected && {
+          color: color ? colors.ink : '#fff',
+          fontFamily: fonts.medium,
+        },
+      ]}
       numberOfLines={1}>
       {label}
     </Text>
@@ -293,7 +361,10 @@ export function DocketTag({ label, onPress, tint, muted }: { label: string; onPr
   );
 }
 
-/** Segmented tabs. The selected one is a raised paper step with a hairline, not a color fill. */
+/**
+ * Tabs, set as words with an ink rule under the chosen one. The rule slides to the tab you pick (a spring, so
+ * a quick second tap redirects it mid-way), which says "this view changed" without a jump.
+ */
 export function Segmented<K extends string>({
   options,
   value,
@@ -305,23 +376,43 @@ export function Segmented<K extends string>({
   onChange: (key: K) => void;
   small?: boolean;
 }) {
+  const [frames, setFrames] = useState<Record<string, { x: number; w: number }>>({});
+  const x = useSharedValue(0);
+  const w = useSharedValue(0);
+  const reduce = useReducedMotion();
+  const frame = frames[value];
+  useEffect(() => {
+    if (!frame) return;
+    const first = w.get() === 0;
+    x.set(reduce || first ? frame.x : withSpring(frame.x, spring));
+    w.set(reduce || first ? frame.w : withSpring(frame.w, spring));
+  }, [frame, reduce, x, w]);
+  // The marker is a 1px bar stretched with scaleX, so the slide is a transform (cheap on every device).
+  const marker = useAnimatedStyle(() => ({
+    transform: [{ translateX: x.get() + w.get() / 2 - 0.5 }, { scaleX: Math.max(w.get(), 0.001) }],
+  }));
   return (
-    <View style={styles.segment} accessibilityRole="tablist">
+    <View style={styles.tabs} accessibilityRole="tablist">
       {options.map((o) => {
         const on = o.key === value;
         return (
           <Tap
             key={o.key}
             onPress={() => onChange(o.key)}
+            onLayout={(e) => {
+              const { x: fx, width } = e.nativeEvent.layout;
+              setFrames((f) => (f[o.key]?.x === fx && f[o.key]?.w === width ? f : { ...f, [o.key]: { x: fx, w: width } }));
+            }}
             accessibilityRole="tab"
             accessibilityState={{ selected: on }}
             hitSlop={0}
-            style={[styles.segmentBtn, small && styles.segmentBtnSmall, on && styles.segmentOn]}>
-            {o.icon ? <Icon name={o.icon} size={16} color={on ? colors.ink : colors.inkSoft} /> : null}
-            <Text style={[styles.segmentText, small && { fontSize: 13 }, on && styles.segmentTextOn]}>{o.label}</Text>
+            style={[styles.tab, small && styles.tabSmall]}>
+            {o.icon ? <Icon name={o.icon} size={16} color={on ? colors.ink : colors.muted} /> : null}
+            <Text style={[styles.tabText, small && { fontSize: 14 }, on && styles.tabTextOn]}>{o.label}</Text>
           </Tap>
         );
       })}
+      <Animated.View pointerEvents="none" style={[styles.tabMarker, marker]} />
     </View>
   );
 }
@@ -391,7 +482,16 @@ export function BillCardSkeleton() {
 /** The shape of a list row (an alert, a comment, a legislator) while it loads. */
 export function RowSkeleton({ avatar = true }: { avatar?: boolean }) {
   return (
-    <View style={[styles.card, { flexDirection: 'row', gap: space.md, padding: space.md, marginBottom: space.sm }]}>
+    <View
+      style={[
+        styles.card,
+        {
+          flexDirection: 'row',
+          gap: space.md,
+          padding: space.md,
+          marginBottom: space.sm,
+        },
+      ]}>
       {avatar ? <Skeleton width={36} height={36} r={radius.sm} /> : null}
       <View style={{ flex: 1, gap: space.sm }}>
         <Skeleton width="55%" height={14} />
@@ -435,8 +535,16 @@ export function Empty({ icon, title, body, action }: { icon: IconName; title: st
   );
 }
 
-const TOAST_ICON = { info: 'info', success: 'check-circle', error: 'alert-circle' } as const;
-const TOAST_COLOR = { info: colors.inkSoft, success: colors.success, error: colors.danger };
+const TOAST_ICON = {
+  info: 'info',
+  success: 'check-circle',
+  error: 'alert-circle',
+} as const;
+const TOAST_COLOR = {
+  info: colors.inkSoft,
+  success: colors.success,
+  error: colors.danger,
+};
 
 /** Toasts sit at the bottom, near the thumb and the button that caused them, above the tab bar and the
  *  home indicator. */
@@ -447,8 +555,10 @@ export function Toaster() {
   return (
     <View pointerEvents="box-none" style={[styles.toastWrap, { bottom: insets.bottom + 72 }]}>
       {toasts.map((t) => (
-        <View
+        <Animated.View
           key={t.id}
+          entering={FadeInDown.springify().damping(spring.damping).stiffness(spring.stiffness)}
+          exiting={FadeOutDown.duration(motion.fast)}
           style={[styles.toast, float()]}
           accessibilityLiveRegion="polite"
           accessibilityRole={t.tone === 'error' ? 'alert' : undefined}>
@@ -459,7 +569,7 @@ export function Toaster() {
               <Text style={styles.toastActionText}>{t.action.label}</Text>
             </Tap>
           ) : null}
-        </View>
+        </Animated.View>
       ))}
     </View>
   );
@@ -557,8 +667,12 @@ export function BottomSheet({
       }
     });
 
-  const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: y.get() }] }));
-  const backdropStyle = useAnimatedStyle(() => ({ opacity: Math.max(0, 1 - y.get() / 500) }));
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: y.get() }],
+  }));
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: Math.max(0, 1 - y.get() / 500),
+  }));
 
   if (!mounted) return null;
   return (
@@ -569,7 +683,14 @@ export function BottomSheet({
         </Animated.View>
         <View style={styles.sheetHost} pointerEvents="box-none">
           <Animated.View
-            style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, space.lg) + space.md, maxHeight: '85%' }, sheetStyle]}
+            style={[
+              styles.sheet,
+              {
+                paddingBottom: Math.max(insets.bottom, space.lg) + space.md,
+                maxHeight: '85%',
+              },
+              sheetStyle,
+            ]}
             accessibilityViewIsModal>
             <GestureDetector gesture={pan}>
               <View style={styles.sheetHandleArea}>
@@ -614,7 +735,15 @@ export function Avatar({ name, size = 40 }: { name: string; size?: number }) {
   }
   return (
     <View
-      style={[{ width: size, height: size, backgroundColor: colors.surfaceAlt, overflow: 'hidden' }, outline(size / 2.6)]}
+      style={[
+        {
+          width: size,
+          height: size,
+          backgroundColor: colors.surfaceAlt,
+          overflow: 'hidden',
+        },
+        outline(size / 2.6),
+      ]}
       accessibilityLabel={`${name}'s avatar`}>
       {cells.map((s, i) => (
         <View key={i} style={s} />
@@ -624,27 +753,49 @@ export function Avatar({ name, size = 40 }: { name: string; size?: number }) {
 }
 
 const styles = StyleSheet.create({
-  segment: { flexDirection: 'row', backgroundColor: colors.surfaceAlt, padding: space.xs, borderRadius: radius.md, borderCurve: 'continuous' },
-  segmentBtn: {
-    flex: 1,
+  tabs: {
+    flexDirection: 'row',
+    gap: space.xl,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
+  },
+  tab: {
     flexDirection: 'row',
     gap: space.sm,
-    justifyContent: 'center',
     alignItems: 'center',
-    height: 36,
-    borderRadius: radius.md - space.xs,
-    borderCurve: 'continuous',
-    borderWidth: 1,
-    borderColor: 'transparent',
+    height: 44,
   },
-  segmentBtnSmall: { height: 32 },
-  segmentOn: { backgroundColor: colors.surface, borderColor: colors.line },
-  segmentText: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 20, color: colors.inkSoft },
-  segmentTextOn: { fontFamily: fonts.medium, color: colors.ink },
+  tabSmall: { height: 36 },
+  tabText: {
+    fontFamily: fonts.regular,
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.muted,
+  },
+  tabTextOn: { fontFamily: fonts.medium, color: colors.ink },
+  tabMarker: {
+    position: 'absolute',
+    left: 0,
+    bottom: -1,
+    width: 1,
+    height: 2,
+    backgroundColor: colors.ink,
+  },
   screen: { flex: 1, backgroundColor: colors.bg },
-  column: { flex: 1, width: '100%', maxWidth: APP_MAX_WIDTH, alignSelf: 'center' },
-  topBar: { flexDirection: 'row', alignItems: 'center', paddingVertical: space.sm, gap: space.sm },
-  iconBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  column: { flex: 1, width: '100%', alignSelf: 'center' },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: space.sm,
+    gap: space.sm,
+  },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   card: { backgroundColor: colors.surface, padding: space.lg, ...outline(radius.lg) },
   keycap: {
     minWidth: 20,
@@ -659,8 +810,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  keycapDark: { backgroundColor: 'rgba(255,255,255,0.12)', borderColor: 'rgba(255,255,255,0.3)' },
-  keycapText: { fontFamily: fonts.medium, fontSize: 11, lineHeight: 14, color: colors.inkSoft, ...figures },
+  keycapDark: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  keycapText: {
+    fontFamily: fonts.medium,
+    fontSize: 11,
+    lineHeight: 14,
+    color: colors.inkSoft,
+    ...figures,
+  },
   button: {
     paddingHorizontal: space.xl,
     alignItems: 'center',
@@ -670,7 +830,12 @@ const styles = StyleSheet.create({
     borderCurve: 'continuous',
   },
   buttonSmall: { height: 36, paddingHorizontal: space.lg },
-  buttonLarge: { height: 56, paddingHorizontal: space.xl, borderRadius: radius.md, borderCurve: 'continuous' },
+  buttonLarge: {
+    height: 56,
+    paddingHorizontal: space.xl,
+    borderRadius: radius.md,
+    borderCurve: 'continuous',
+  },
   buttonSecondary: { borderWidth: 1, borderColor: colors.lineStrong },
   buttonInner: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   buttonText: { fontFamily: fonts.medium, fontSize: 15, lineHeight: 22 },
@@ -692,7 +857,12 @@ const styles = StyleSheet.create({
     borderColor: colors.lineStrong,
     maxWidth: '100%',
   },
-  chipText: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 18, color: colors.ink },
+  chipText: {
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.ink,
+  },
   chipSmall: { paddingVertical: space.xs, paddingHorizontal: 10 },
   chipTextSmall: { fontSize: 12, lineHeight: 16 },
   docket: {
@@ -720,9 +890,24 @@ const styles = StyleSheet.create({
     borderCurve: 'continuous',
   },
   // Focus is shown by the field's own border; the browser's ring would be drawn inside the rounded box.
-  inputFocused: { borderColor: colors.ink, ...(isWeb ? ({ outlineStyle: 'none' } as object) : null) },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.xl },
-  toastWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center', gap: space.sm, zIndex: 1000 },
+  inputFocused: {
+    borderColor: colors.ink,
+    ...(isWeb ? ({ outlineStyle: 'none' } as object) : null),
+  },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: space.xl,
+  },
+  toastWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    gap: space.sm,
+    zIndex: 1000,
+  },
   toast: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -734,8 +919,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     ...outline(radius.md),
   },
-  toastAction: { paddingHorizontal: space.sm, paddingVertical: space.xs, marginLeft: space.xs },
-  toastActionText: { fontFamily: fonts.semibold, fontSize: 14, lineHeight: 20, color: colors.ink, textDecorationLine: 'underline' },
+  toastAction: {
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+    marginLeft: space.xs,
+  },
+  toastActionText: {
+    fontFamily: fonts.semibold,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.ink,
+    textDecorationLine: 'underline',
+  },
   backdrop: { backgroundColor: 'rgba(43,38,34,0.32)' },
   sheetHost: { flex: 1, justifyContent: 'flex-end', alignItems: 'center' },
   sheet: {
@@ -748,6 +943,17 @@ const styles = StyleSheet.create({
     borderCurve: 'continuous',
   },
   sheetHandleArea: { paddingTop: space.md, paddingBottom: space.md },
-  grabber: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: colors.lineStrong, marginBottom: space.lg },
-  sheetRow: { paddingVertical: space.md, borderBottomWidth: 1, borderBottomColor: colors.line },
+  grabber: {
+    alignSelf: 'center',
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.lineStrong,
+    marginBottom: space.lg,
+  },
+  sheetRow: {
+    paddingVertical: space.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
+  },
 });

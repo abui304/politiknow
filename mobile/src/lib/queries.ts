@@ -22,7 +22,6 @@ import type {
   FeedSort,
   FloorWeek,
   Following,
-  Hashtag,
   Legislator,
   LegislatorRole,
   Me,
@@ -46,7 +45,6 @@ import type {
 export type SearchFilters = {
   q: string;
   tag: string | null;
-  hashtag: string | null;
   party: PartyFilter | null;
   chamber: Chamber | null;
   stage: StageFilter | null;
@@ -58,7 +56,7 @@ export const keys = {
   feed: ['feed'] as const,
   feedSorted: (sort: FeedSort) => ['feed', sort] as const,
   search: (f: SearchFilters) => ['search', f] as const,
-  hashtags: ['hashtags'] as const,
+  related: (id: string) => ['bill', id, 'related'] as const,
   stages: (f: Omit<SearchFilters, 'stage'>) => ['stages', f] as const,
   bill: (id: string) => ['bill', id] as const,
   cosponsors: (billId: string) => ['bill', billId, 'cosponsors'] as const,
@@ -88,7 +86,11 @@ export const keys = {
 export const useMe = () => useQuery({ queryKey: keys.me, queryFn: () => api<Me>('/users/me') });
 
 export const useTags = () =>
-  useQuery({ queryKey: keys.tags, queryFn: () => api<Tag[]>('/tags'), staleTime: Infinity });
+  useQuery({
+    queryKey: keys.tags,
+    queryFn: () => api<Tag[]>('/tags'),
+    staleTime: Infinity,
+  });
 
 export const useFeed = (sort: FeedSort = 'for_you') =>
   useInfiniteQuery({
@@ -102,7 +104,10 @@ export const useSearch = (filters: SearchFilters) =>
   useInfiniteQuery({
     queryKey: keys.search(filters),
     queryFn: ({ pageParam }) => {
-      const params = new URLSearchParams({ cursor: String(pageParam), limit: '20' });
+      const params = new URLSearchParams({
+        cursor: String(pageParam),
+        limit: '20',
+      });
       for (const [k, v] of Object.entries(filters)) if (v) params.set(k, v);
       return api<BillPage>(`/search?${params}`);
     },
@@ -128,7 +133,10 @@ export const useLegislators = (q: string, party: PartyFilter | null, chamber: Ch
   });
 
 export const useLegislator = (id: string) =>
-  useQuery({ queryKey: keys.legislator(id), queryFn: () => api<Legislator>(`/legislators/${id}`) });
+  useQuery({
+    queryKey: keys.legislator(id),
+    queryFn: () => api<Legislator>(`/legislators/${id}`),
+  });
 
 export const useLegislatorBills = (id: string, role: LegislatorRole) =>
   useInfiniteQuery({
@@ -149,10 +157,18 @@ export const useStateMap = (state: string | null | undefined) =>
   });
 
 export const useBillCosponsors = (billId: string) =>
-  useQuery({ queryKey: keys.cosponsors(billId), queryFn: () => api<Cosponsor[]>(`/bills/${billId}/cosponsors`) });
+  useQuery({
+    queryKey: keys.cosponsors(billId),
+    queryFn: () => api<Cosponsor[]>(`/bills/${billId}/cosponsors`),
+  });
 
-export const usePopularHashtags = () =>
-  useQuery({ queryKey: keys.hashtags, queryFn: () => api<Hashtag[]>('/hashtags?limit=24'), staleTime: 5 * 60_000 });
+/** Bills on the same subjects as this one, closest first. */
+export const useRelatedBills = (id: string) =>
+  useQuery({
+    queryKey: keys.related(id),
+    queryFn: () => api<Bill[]>(`/bills/${id}/related`),
+    staleTime: 10 * 60_000,
+  });
 
 /** Bill counts per status, within the other active search filters. */
 export const useStageCounts = (filters: Omit<SearchFilters, 'stage'>) =>
@@ -170,7 +186,9 @@ export const useStageCounts = (filters: Omit<SearchFilters, 'stage'>) =>
 /** A bill as it already appears in a loaded list (feed, search, a legislator's bills), if anywhere. */
 function billFromLists(qc: QueryClient, id: string): Bill | undefined {
   for (const key of [keys.feed, ['search'], ['legislatorBills']]) {
-    for (const [, data] of qc.getQueriesData<InfiniteData<BillPage>>({ queryKey: key })) {
+    for (const [, data] of qc.getQueriesData<InfiniteData<BillPage>>({
+      queryKey: key,
+    })) {
       const hit = data?.pages?.flatMap((p) => p.items).find((b) => b.id === id);
       if (hit) return hit;
     }
@@ -191,7 +209,11 @@ export const useBill = (id: string) => {
 
 /** Start loading a bill page before the tap finishes (on press-in), so it's usually ready when it opens. */
 export function prefetchBill(qc: QueryClient, id: string) {
-  qc.prefetchQuery({ queryKey: keys.bill(id), queryFn: () => api<Bill>(`/bills/${id}`), staleTime: 30_000 });
+  qc.prefetchQuery({
+    queryKey: keys.bill(id),
+    queryFn: () => api<Bill>(`/bills/${id}`),
+    staleTime: 30_000,
+  });
   qc.prefetchQuery({
     queryKey: [...keys.comments(id), 'top'],
     queryFn: () => api<Comment[]>(`/bills/${id}/comments?sort=top`),
@@ -215,7 +237,10 @@ export const useComments = (billId: string, sort: CommentSort = 'top') =>
   });
 
 export const useProfile = (id: string) =>
-  useQuery({ queryKey: keys.profile(id), queryFn: () => api<Profile>(`/users/${id}`) });
+  useQuery({
+    queryKey: keys.profile(id),
+    queryFn: () => api<Profile>(`/users/${id}`),
+  });
 
 export const useUserComments = (id: string | undefined) =>
   useQuery({
@@ -225,15 +250,25 @@ export const useUserComments = (id: string | undefined) =>
   });
 
 export const useNotifications = () =>
-  useQuery({ queryKey: keys.notifications, queryFn: () => api<AppNotification[]>('/notifications') });
+  useQuery({
+    queryKey: keys.notifications,
+    queryFn: () => api<AppNotification[]>('/notifications'),
+  });
 
 /** Legislators and bills the signed-in user follows. */
 export const useFollowing = () =>
-  useQuery({ queryKey: keys.following, queryFn: () => api<Following>('/users/me/following') });
+  useQuery({
+    queryKey: keys.following,
+    queryFn: () => api<Following>('/users/me/following'),
+  });
 
 /** The nationwide map; static, like the state maps. */
 export const useNationalMap = () =>
-  useQuery({ queryKey: keys.stateMap('US'), queryFn: () => api<NationalMap>('/maps/US'), staleTime: Infinity });
+  useQuery({
+    queryKey: keys.stateMap('US'),
+    queryFn: () => api<NationalMap>('/maps/US'),
+    staleTime: Infinity,
+  });
 
 /** Full-detail boundaries for these states, keyed by state, as each one loads. */
 export const useNationalDetail = (states: string[]) =>
@@ -255,14 +290,24 @@ export const useStateDistricts = (state: string | null | undefined) =>
   });
 
 export const useMyDistricts = () =>
-  useQuery({ queryKey: keys.myDistricts, queryFn: () => api<District[]>('/users/me/districts') });
+  useQuery({
+    queryKey: keys.myDistricts,
+    queryFn: () => api<District[]>('/users/me/districts'),
+  });
 
 export const useRepresentatives = () =>
-  useQuery({ queryKey: keys.representatives, queryFn: () => api<Representatives>('/users/me/representatives') });
+  useQuery({
+    queryKey: keys.representatives,
+    queryFn: () => api<Representatives>('/users/me/representatives'),
+  });
 
 /** This week's House and Senate floor schedule. */
 export const useCalendar = () =>
-  useQuery({ queryKey: keys.calendar, queryFn: () => api<FloorWeek>('/calendar'), staleTime: 10 * 60_000 });
+  useQuery({
+    queryKey: keys.calendar,
+    queryFn: () => api<FloorWeek>('/calendar'),
+    staleTime: 10 * 60_000,
+  });
 
 // ---------- writes ----------
 
@@ -287,9 +332,15 @@ export function useVoteBill() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, value }: { id: string; value: -1 | 0 | 1; before: Pick<Bill, 'net_score' | 'my_vote'> }) =>
-      api<{ net_score: number; my_vote: -1 | 0 | 1 }>(`/bills/${id}/vote`, { method: 'POST', body: { value } }),
+      api<{ net_score: number; my_vote: -1 | 0 | 1 }>(`/bills/${id}/vote`, {
+        method: 'POST',
+        body: { value },
+      }),
     onMutate: ({ id, value, before }) =>
-      patchBill(qc, id, { my_vote: value, net_score: before.net_score - before.my_vote + value }),
+      patchBill(qc, id, {
+        my_vote: value,
+        net_score: before.net_score - before.my_vote + value,
+      }),
     onError: (_e, { id, before }) => patchBill(qc, id, before),
     onSuccess: (res, { id }) => patchBill(qc, id, res),
   });
@@ -339,12 +390,19 @@ export function useAddComment(billId: string) {
           ? list.map((c) => (c.id === v.parent_comment_id ? { ...c, replies: [...c.replies, pending] } : c))
           : [pending, ...list],
       );
-      patchBill(qc, billId, { comment_count: (qc.getQueryData<Bill>(keys.bill(billId))?.comment_count ?? 0) + 1 });
+      patchBill(qc, billId, {
+        comment_count: (qc.getQueryData<Bill>(keys.bill(billId))?.comment_count ?? 0) + 1,
+      });
     },
     onError: (_e, v) => {
       const gone = `pending-${v.requestKey}`;
       patchComments(qc, billId, (list) =>
-        list.filter((c) => c.id !== gone).map((c) => ({ ...c, replies: c.replies.filter((r) => r.id !== gone) })),
+        list
+          .filter((c) => c.id !== gone)
+          .map((c) => ({
+            ...c,
+            replies: c.replies.filter((r) => r.id !== gone),
+          })),
       );
     },
     onSettled: () => {
@@ -366,12 +424,29 @@ export function useCommentActions(billId: string) {
       mutationFn: ({ id, value }: { id: string; value: -1 | 0 | 1; before: Pick<Comment, 'net_score' | 'my_vote'> }) =>
         api(`/comments/${id}/vote`, { method: 'POST', body: { value } }),
       onMutate: ({ id, value, before }) =>
-        patchComments(qc, billId, mapComment(id, (c) => ({ ...c, my_vote: value, net_score: before.net_score - before.my_vote + value }))),
-      onError: (_e, { id, before }) => patchComments(qc, billId, mapComment(id, (c) => ({ ...c, ...before }))),
+        patchComments(
+          qc,
+          billId,
+          mapComment(id, (c) => ({
+            ...c,
+            my_vote: value,
+            net_score: before.net_score - before.my_vote + value,
+          })),
+        ),
+      onError: (_e, { id, before }) =>
+        patchComments(
+          qc,
+          billId,
+          mapComment(id, (c) => ({ ...c, ...before })),
+        ),
     }),
     report: useMutation({
       mutationFn: ({ id, category }: { id: string; category: string }) =>
-        api(`/comments/${id}/report`, { method: 'POST', body: { category }, idempotencyKey: `${id}:${category}:${newRequestKey()}` }),
+        api(`/comments/${id}/report`, {
+          method: 'POST',
+          body: { category },
+          idempotencyKey: `${id}:${category}:${newRequestKey()}`,
+        }),
       onSuccess: refresh,
     }),
     /** Called after the Undo window has passed (see deferWithUndo). */
@@ -384,7 +459,12 @@ export function useCommentActions(billId: string) {
     restore: (snap: [readonly unknown[], Comment[] | undefined][]) => snap.forEach(([key, data]) => qc.setQueryData(key, data)),
     hideLocally: (id: string) =>
       patchComments(qc, billId, (list) =>
-        list.filter((c) => c.id !== id).map((c) => ({ ...c, replies: c.replies.filter((r) => r.id !== id) })),
+        list
+          .filter((c) => c.id !== id)
+          .map((c) => ({
+            ...c,
+            replies: c.replies.filter((r) => r.id !== id),
+          })),
       ),
   };
 }
@@ -411,7 +491,13 @@ export function useFollow(userId: string) {
   const qc = useQueryClient();
   const patch = (follow: boolean) =>
     qc.setQueryData<Profile>(keys.profile(userId), (p) =>
-      p && p.is_following !== follow ? { ...p, is_following: follow, follower_count: p.follower_count + (follow ? 1 : -1) } : p,
+      p && p.is_following !== follow
+        ? {
+            ...p,
+            is_following: follow,
+            follower_count: p.follower_count + (follow ? 1 : -1),
+          }
+        : p,
     );
   return useMutation({
     mutationFn: (follow: boolean) => api(`/users/${userId}/follow`, { method: follow ? 'POST' : 'DELETE' }),
@@ -456,11 +542,18 @@ export function useFollowDistrict() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ state, district, follow }: { state: string; district: number; follow: boolean }) =>
-      api(`/districts/${state}/${district}/follow`, { method: follow ? 'POST' : 'DELETE' }),
+      api(`/districts/${state}/${district}/follow`, {
+        method: follow ? 'POST' : 'DELETE',
+      }),
     // Optimistic: flip the district in its state's list and drop it from "Districts you follow" right away.
     onMutate: ({ state, district, follow }) => {
-      qc.setQueryData<StateDistricts>(keys.stateDistricts(state), (d) =>
-        d && { ...d, districts: d.districts.map((x) => (x.district === district ? { ...x, is_following: follow } : x)) },
+      qc.setQueryData<StateDistricts>(
+        keys.stateDistricts(state),
+        (d) =>
+          d && {
+            ...d,
+            districts: d.districts.map((x) => (x.district === district ? { ...x, is_following: follow } : x)),
+          },
       );
       if (!follow) {
         qc.setQueryData<District[]>(keys.myDistricts, (list) =>
@@ -482,7 +575,10 @@ export function useSetHome() {
       body === null
         ? api('/users/me/home', { method: 'DELETE' })
         : 'latitude' in body
-          ? api<Representatives>('/users/me/home/locate', { method: 'POST', body })
+          ? api<Representatives>('/users/me/home/locate', {
+              method: 'POST',
+              body,
+            })
           : api<Representatives>('/users/me/home', { method: 'PUT', body }),
     onSuccess: (reps) => {
       qc.setQueryData(keys.representatives, reps ?? { home: null, senators: [] });
@@ -494,7 +590,10 @@ export function useSetHome() {
 // ---------- moderation dashboard ----------
 
 export const useModComments = (view: ModQueue) =>
-  useQuery({ queryKey: keys.modComments(view), queryFn: () => api<ModComment[]>(`/moderation/comments?view=${view}`) });
+  useQuery({
+    queryKey: keys.modComments(view),
+    queryFn: () => api<ModComment[]>(`/moderation/comments?view=${view}`),
+  });
 
 /** Shadow-banned users, or (with `q`) anyone whose display name starts with it. */
 export const useModUsers = (q: string) =>
@@ -504,7 +603,10 @@ export const useModUsers = (q: string) =>
   });
 
 export const useModSummaries = () =>
-  useQuery({ queryKey: keys.modSummaries, queryFn: () => api<SummaryReportGroup[]>('/moderation/summary-reports') });
+  useQuery({
+    queryKey: keys.modSummaries,
+    queryFn: () => api<SummaryReportGroup[]>('/moderation/summary-reports'),
+  });
 
 export function useModActions() {
   const qc = useQueryClient();
@@ -525,11 +627,16 @@ export function useModActions() {
     }),
     shadowBan: useMutation({
       mutationFn: ({ userId, banned }: { userId: string; banned: boolean }) =>
-        api(`/moderation/users/${userId}/shadow-ban`, { method: banned ? 'PUT' : 'DELETE' }),
+        api(`/moderation/users/${userId}/shadow-ban`, {
+          method: banned ? 'PUT' : 'DELETE',
+        }),
       onSuccess: refresh,
     }),
     resolveSummary: useMutation({
-      mutationFn: (billId: string) => api(`/moderation/bills/${billId}/summary-reports/resolve`, { method: 'POST' }),
+      mutationFn: (billId: string) =>
+        api(`/moderation/bills/${billId}/summary-reports/resolve`, {
+          method: 'POST',
+        }),
       onSuccess: refresh,
     }),
     regenerateSummary: useMutation({
