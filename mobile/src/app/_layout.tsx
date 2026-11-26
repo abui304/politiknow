@@ -18,8 +18,10 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { CommandMenu, useCommandMenu } from '@/components/CommandMenu';
+import { Sidebar } from '@/components/Sidebar';
 import { Toaster } from '@/components/ui';
 import { ApiError } from '@/lib/api';
+import { useWide } from '@/lib/layout';
 import { useAuth } from '@/lib/auth';
 import { billPathFrom, usePendingLink } from '@/lib/share';
 import { APP_MAX_WIDTH, colors } from '@/theme';
@@ -40,8 +42,12 @@ const queryClient = new QueryClient({
  * Stale-while-revalidate across launches: the last feed, bills and profile are saved on the device, so the
  * app opens straight onto them and refreshes in the background instead of showing loaders.
  */
-const persister = createAsyncStoragePersister({ storage: AsyncStorage, key: 'pk.cache', throttleTime: 2000 });
-const PERSISTED = new Set(['me', 'feed', 'bill', 'tags', 'notifications', 'following', 'representatives', 'legislator', 'hashtags', 'calendar']);
+const persister = createAsyncStoragePersister({
+  storage: AsyncStorage,
+  key: 'pk.cache',
+  throttleTime: 2000,
+});
+const PERSISTED = new Set(['me', 'feed', 'bill', 'tags', 'notifications', 'following', 'representatives', 'legislator', 'calendar']);
 
 /**
  * A shared bill link (politiknow.app/bill/…) opens that bill. If the visitor isn't signed in, it's kept while
@@ -74,7 +80,10 @@ function useShortcuts(enabled: boolean) {
         menu.set(!menu.open);
       } else if (e.key === '/' && !typing) {
         e.preventDefault();
-        router.navigate({ pathname: '/search', params: { focus: String(Date.now()) } });
+        router.navigate({
+          pathname: '/search',
+          params: { focus: String(Date.now()) },
+        });
       }
     };
     window.addEventListener('keydown', onKey);
@@ -105,29 +114,32 @@ export default function RootLayout() {
   useEffect(() => {
     if (ready) SplashScreen.hideAsync().catch(() => {});
   }, [ready]);
+  const wide = useWide();
   useShortcuts(ready && Boolean(accessToken) && stage === 'ready');
   useSharedLinks(ready, Boolean(accessToken) && stage === 'ready');
   if (!ready) return null;
 
   const signedIn = Boolean(accessToken);
+  const inApp = signedIn && stage === 'ready';
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-    <PersistQueryClientProvider
-      client={queryClient}
-      persistOptions={{
-        persister,
-        maxAge: 24 * 60 * 60_000,
-        buster: 'v2', // bump when a cached shape changes, so old saves are thrown away
-        dehydrateOptions: {
-          shouldDehydrateQuery: (q) => q.state.status === 'success' && PERSISTED.has(String(q.queryKey[0])),
-        },
-      }}>
-      <SafeAreaProvider>
-        <StatusBar style="dark" />
-        <View style={styles.outer}>
-          <View style={styles.app}>
-            {/* Native stack transitions: pages slide in from the side and follow the back swipe (and Android's
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={{
+          persister,
+          maxAge: 24 * 60 * 60_000,
+          buster: 'v3', // bump when a cached shape changes, so old saves are thrown away
+          dehydrateOptions: {
+            shouldDehydrateQuery: (q) => q.state.status === 'success' && PERSISTED.has(String(q.queryKey[0])),
+          },
+        }}>
+        <SafeAreaProvider>
+          <StatusBar style="dark" />
+          <View style={[styles.outer, wide && styles.outerWide]}>
+            {wide && inApp ? <Sidebar /> : null}
+            <View style={wide ? styles.appWide : styles.app}>
+              {/* Native stack transitions: pages slide in from the side and follow the back swipe (and Android's
                 predictive back) with the finger. Bill cards zoom into their page on iOS 18 (see BillCard). */}
             <Stack
               screenOptions={{
@@ -175,8 +187,14 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
-  outer: { flex: 1, backgroundColor: Platform.OS === 'web' ? colors.surfaceAlt : colors.bg },
-  // On desktop web, render the app as a centered phone-width column.
+  outer: {
+    flex: 1,
+    backgroundColor: Platform.OS === 'web' ? colors.surfaceAlt : colors.bg,
+  },
+  // Desktop: navigation down the left, the page filling the rest, all on the same paper.
+  outerWide: { flexDirection: 'row', backgroundColor: colors.bg },
+  appWide: { flex: 1, minWidth: 0 },
+  // On a narrow browser window (a tablet, a half-width window), a centered phone-width column.
   app:
     Platform.OS === 'web'
       ? {
