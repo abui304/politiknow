@@ -1,20 +1,18 @@
-"""Background jobs (spec 3.2): ingestion 4x daily, trending every 30 min, nightly pruning,
-plus per-comment moderation and social notifications.
+"""Optional Celery worker (TASK_MODE=celery). By default nothing needs to run alongside the API:
+per-comment jobs run right after the request (app/jobs.py), trending refreshes itself while people use the
+app, and ingestion runs on a schedule from GitHub Actions (.github/workflows/jobs.yml).
 
 Run with:  celery -A app.worker worker --beat --loglevel=info
 """
 
 import asyncio
 import uuid
-from datetime import UTC, datetime, timedelta
 
 from celery import Celery
 from celery.schedules import crontab
-from sqlalchemy import delete
 
 from app.config import settings
 from app.db import worker_sessionmaker
-from app.models import Bill, Comment, User, UserTagInteraction
 
 celery_app = Celery("politiknow", broker=settings.redis_url, backend=None)
 celery_app.conf.update(
@@ -56,35 +54,20 @@ def recalculate_trending():
 
 @celery_app.task
 def prune_interactions():
-    async def prune(db):
-        cutoff = datetime.now(UTC) - timedelta(days=30)
-        await db.execute(delete(UserTagInteraction).where(UserTagInteraction.created_at < cutoff))
-        await db.commit()
+    from app import jobs
 
-    return _run(prune)
+    return _run(jobs.prune)
 
 
 @celery_app.task
 def moderate_comment(comment_id: str):
-    from app.services.moderation import moderate_comment as moderate
+    from app import jobs
 
-    return _run(moderate, uuid.UUID(comment_id))
+    return _run(jobs.moderate_comment, uuid.UUID(comment_id))
 
 
 @celery_app.task
 def notify_followers_of_comment(comment_id: str):
-    from app.services import notify
+    from app import jobs
 
-    async def run(db, cid):
-        comment = await db.get(Comment, cid)
-        if not comment or comment.is_hidden:
-            return
-        actor = await db.get(User, comment.user_id)
-        if actor.is_shadow_banned:
-            return
-        bill = await db.get(Bill, comment.bill_id)
-        pushes = await notify.notify_social(db, actor, bill)
-        await db.commit()
-        await notify.send_pushes(pushes)
-
-    return _run(run, uuid.UUID(comment_id))
+    return _run(jobs.notify_followers_of_comment, uuid.UUID(comment_id))

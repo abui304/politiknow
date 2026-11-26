@@ -3,19 +3,21 @@ import uuid
 from dataclasses import dataclass
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import ARRAY, Text, case, delete, exists, func, literal_column, or_, select
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from sqlalchemy import ARRAY, Text, case, delete, exists, func, literal_column, or_, select, tuple_
 
 from app import search_terms
 from app.config import settings
 from app.deps import DB, CurrentUser, RedisDep
-from app.models import Bill, BillCosponsor, BillFollow, InteractionType, Legislator, SummaryReport, Vote
+from app.models import Bill, BillCosponsor, BillFollow, InteractionType, Legislator, SummaryReport, Vote, bill_label
 from app.ratelimit import enforce_hourly_limit
 from app.schemas import (
     BillOut,
     BillPage,
+    BillRecordOut,
     BillText,
     HashtagOut,
+    OfficialRelated,
     StageOut,
     SummaryReportIn,
     TagOut,
@@ -24,7 +26,7 @@ from app.schemas import (
 )
 from app.serializers import bills_out
 from app.services import feed as feed_service
-from app.services import hashtags, interactions
+from app.services import hashtags, interactions, notify
 from app.services.legislators import PARTY_CODES, like_pattern, name_matches
 from app.taxonomy import POLICY_AREAS
 from app.topic_words import TOPIC_WORDS
@@ -176,11 +178,20 @@ async def get_feed(
     db: DB,
     redis: RedisDep,
     user: CurrentUser,
+    background: BackgroundTasks,
     sort: Literal["for_you", "discussed"] = "for_you",
     cursor: int = 0,
     limit: int = Query(20, le=50),
 ):
     """"for_you": the personalized ranking. "discussed": most comments this week. Each bill says why it's here."""
+    # Trending refreshes itself: the first feed read after it goes stale recalculates it in the background,
+    # so no scheduler is needed for it. The Redis key makes sure only one request does.
+    if settings.task_mode == "inline" and await redis.set(
+        "trending:fresh", "1", ex=settings.trending_refresh_minutes * 60, nx=True
+    ):
+        from app.jobs import run_in_own_session
+
+        background.add_task(run_in_own_session, "recalculate_trending")
     if sort == "discussed":
         bills, reasons, next_cursor = await feed_service.most_discussed(db, cursor, limit)
     else:
@@ -245,6 +256,51 @@ async def _snippets(db, filters: BillFilters, ids: list[uuid.UUID]) -> dict[uuid
 async def get_bill(bill_id: uuid.UUID, db: DB, user: CurrentUser):
     bill = await _published_bill(db, bill_id)
     return (await bills_out(db, user, [bill]))[0]
+
+
+CONGRESS_GOV_TYPES = {
+    "HR": "house-bill", "S": "senate-bill", "HJRES": "house-joint-resolution", "SJRES": "senate-joint-resolution",
+    "HCONRES": "house-concurrent-resolution", "SCONRES": "senate-concurrent-resolution",
+    "HRES": "house-resolution", "SRES": "senate-resolution",
+}
+
+
+def _ordinal(n: int) -> str:
+    suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def congress_gov_url(congress: int, bill_type: str, number: int) -> str:
+    kind = CONGRESS_GOV_TYPES.get(bill_type, "bill")
+    return f"https://www.congress.gov/bill/{_ordinal(congress)}-congress/{kind}/{number}"
+
+
+@router.get("/bills/{bill_id}/record", response_model=BillRecordOut)
+async def bill_record(bill_id: uuid.UUID, db: DB, _: CurrentUser):
+    """The official record around a bill: CBO cost estimates and the bills Congress links to it (identical
+    companions, earlier versions, procedurally related), each linking into the app when we have it."""
+    bill = await _published_bill(db, bill_id)
+    rel = bill.official_related or []
+    keys = {(r.get("congress"), r["type"], r["number"]) for r in rel}
+    found = {}
+    if keys:
+        rows = await db.execute(select(Bill.congress_number, Bill.bill_type, Bill.bill_number, Bill.id).where(
+            Bill.is_published.is_(True),
+            tuple_(Bill.congress_number, Bill.bill_type, Bill.bill_number).in_(list(keys)),
+        ))
+        found = {(c, t, n): i for c, t, n, i in rows}
+    related = [
+        OfficialRelated(
+            label=bill_label(r["type"], r["number"]), congress=r.get("congress"), title=r.get("title"),
+            relationships=r.get("relationships") or [], latest=r.get("latest"),
+            bill_id=found.get((r.get("congress"), r["type"], r["number"])),
+            url=congress_gov_url(r.get("congress") or bill.congress_number, r["type"], r["number"]),
+        )
+        for r in rel
+    ]
+    # Identical companions first, then earlier Congresses, newest first.
+    related.sort(key=lambda r: ("Identical bill" not in r.relationships, -(r.congress or 0)))
+    return BillRecordOut(cbo_estimates=bill.cbo_estimates or [], related=related)
 
 
 @router.get("/bills/{bill_id}/related", response_model=list[BillOut])
@@ -314,6 +370,7 @@ async def follow_bill(bill_id: uuid.UUID, db: DB, user: CurrentUser):
     bill = await _published_bill(db, bill_id)
     if not await db.get(BillFollow, (user.id, bill.id)):
         db.add(BillFollow(user_id=user.id, bill_id=bill.id))
+        await notify.backfill_for_follow(db, user, bill)
         await db.commit()
 
 

@@ -84,6 +84,8 @@ export async function api<T = unknown>(path: string, opts: Options = {}, retried
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const token = useAuth.getState().accessToken;
   if (auth && token) headers.Authorization = `Bearer ${token}`;
+  // Which app this is (ios / android / web): counted per active day, nothing more.
+  headers['X-Client'] = Platform.OS;
   const write = method !== 'GET';
   if (write) headers['Idempotency-Key'] = opts.idempotencyKey ?? newRequestKey();
 

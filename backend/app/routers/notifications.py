@@ -1,4 +1,9 @@
+import uuid
+from datetime import UTC, datetime
+from typing import Literal
+
 from fastapi import APIRouter, status
+from pydantic import BaseModel
 from sqlalchemy import select, update
 
 from app.deps import DB, CurrentUser
@@ -21,5 +26,20 @@ async def mark_all_read(db: DB, user: CurrentUser):
     await db.execute(
         update(Notification).where(Notification.user_id == user.id, Notification.is_read.is_(False))
         .values(is_read=True)
+    )
+    await db.commit()
+
+
+class OpenIn(BaseModel):
+    channel: Literal["in_app", "push", "email"] = "in_app"
+
+
+@router.post("/{notification_id}/open", status_code=status.HTTP_204_NO_CONTENT)
+async def mark_opened(notification_id: uuid.UUID, body: OpenIn, db: DB, user: CurrentUser):
+    """Records the first time an alert was opened, and from where. Feeds the alert open-to-visit rate."""
+    await db.execute(
+        update(Notification)
+        .where(Notification.id == notification_id, Notification.user_id == user.id, Notification.opened_at.is_(None))
+        .values(opened_at=datetime.now(UTC), channel=body.channel, is_read=True)
     )
     await db.commit()

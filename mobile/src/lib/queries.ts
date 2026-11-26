@@ -8,16 +8,19 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 
+import { registerForPush } from './push';
 import { api, newRequestKey } from './api';
 import type {
   AppNotification,
   Bill,
   BillPage,
+  BillRecord,
   Chamber,
   Comment,
   CommentSort,
   CommentWithBill,
   Cosponsor,
+  Digest,
   District,
   FeedSort,
   FloorWeek,
@@ -25,6 +28,7 @@ import type {
   Legislator,
   LegislatorRole,
   Me,
+  MemberVotesPage,
   ModComment,
   ModQueue,
   ModUser,
@@ -34,6 +38,8 @@ import type {
   PartyFilter,
   Profile,
   Representatives,
+  RollCall,
+  Since,
   StageCount,
   StageFilter,
   StateDistricts,
@@ -57,6 +63,12 @@ export const keys = {
   feedSorted: (sort: FeedSort) => ['feed', sort] as const,
   search: (f: SearchFilters) => ['search', f] as const,
   related: (id: string) => ['bill', id, 'related'] as const,
+  billVotes: (id: string) => ['bill', id, 'votes'] as const,
+  billRecord: (id: string) => ['bill', id, 'record'] as const,
+  legislatorVotes: (id: string) => ['legislator', id, 'votes'] as const,
+  myMembersVotes: ['me', 'members', 'votes'] as const,
+  digest: ['digest'] as const,
+  since: ['me', 'since'] as const,
   stages: (f: Omit<SearchFilters, 'stage'>) => ['stages', f] as const,
   bill: (id: string) => ['bill', id] as const,
   cosponsors: (billId: string) => ['bill', billId, 'cosponsors'] as const,
@@ -160,6 +172,37 @@ export const useBillCosponsors = (billId: string) =>
   useQuery({
     queryKey: keys.cosponsors(billId),
     queryFn: () => api<Cosponsor[]>(`/bills/${billId}/cosponsors`),
+  });
+
+/** CBO cost estimates and the bills Congress officially links to this one. */
+export const useBillRecord = (id: string) =>
+  useQuery({ queryKey: keys.billRecord(id), queryFn: () => api<BillRecord>(`/bills/${id}/record`), staleTime: 30 * 60_000 });
+
+/** Every recorded vote on a bill: passage first, procedural last, with the user's own members. */
+export const useBillVotes = (id: string) =>
+  useQuery({ queryKey: keys.billVotes(id), queryFn: () => api<RollCall[]>(`/bills/${id}/votes`), staleTime: 5 * 60_000 });
+
+/** A member's recorded votes, newest first, with missed votes this Congress (count and denominator). */
+export const useLegislatorVotes = (id: string) =>
+  useInfiniteQuery({
+    queryKey: keys.legislatorVotes(id),
+    queryFn: ({ pageParam }) => api<MemberVotesPage>(`/legislators/${id}/votes?cursor=${pageParam}&limit=10`),
+    initialPageParam: 0,
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
+  });
+
+/** What changed since the last visit, for the top of the feed. Fetched once per visit. */
+export const useSince = () =>
+  useQuery({ queryKey: keys.since, queryFn: () => api<Since>('/users/me/since'), staleTime: 30 * 60_000 });
+
+/** This week's recap, "Your week in Congress". */
+export const useDigest = () => useQuery({ queryKey: keys.digest, queryFn: () => api<Digest>('/digest') });
+
+/** Recent passage and cloture votes by the user's own members of Congress. */
+export const useMyMembersVotes = () =>
+  useQuery({
+    queryKey: keys.myMembersVotes,
+    queryFn: () => api<{ items: RollCall[] }>('/users/me/members/votes?limit=5').then((r) => r.items),
   });
 
 /** Bills on the same subjects as this one, closest first. */
@@ -478,6 +521,7 @@ export function useUpdateMe() {
         onboarding_tags: string[];
         notification_preferences: NotificationPrefs;
         push_token: string | null;
+        recap_email: boolean;
       }>,
     ) => api<Me>('/users/me', { method: 'PATCH', body }),
     onSuccess: (me) => {
@@ -510,6 +554,16 @@ export function useFollow(userId: string) {
   });
 }
 
+/**
+ * After a follow: Alerts may have new entries (a first follow fills in the bill's recent activity), and
+ * this is when asking for push permission makes sense, since there's now something to be alerted about.
+ * The prompt shows at most once; the system remembers the answer.
+ */
+function afterFollow(qc: QueryClient) {
+  qc.invalidateQueries({ queryKey: keys.notifications });
+  registerForPush({ ask: true });
+}
+
 export function useFollowBill() {
   const qc = useQueryClient();
   return useMutation({
@@ -517,6 +571,9 @@ export function useFollowBill() {
       api(`/bills/${id}/follow`, { method: follow ? 'POST' : 'DELETE' }),
     onMutate: ({ id, follow }) => patchBill(qc, id, { is_following: follow }), // one tap, instant
     onError: (_e, { id, follow }) => patchBill(qc, id, { is_following: !follow }),
+    onSuccess: (_d, { follow }) => {
+      if (follow) afterFollow(qc);
+    },
     onSettled: () => qc.invalidateQueries({ queryKey: keys.following }),
   });
 }
@@ -527,6 +584,9 @@ export function useFollowLegislator(id: string) {
     mutationFn: (follow: boolean) => api(`/legislators/${id}/follow`, { method: follow ? 'POST' : 'DELETE' }),
     onMutate: (follow) => qc.setQueryData<Legislator>(keys.legislator(id), (l) => l && { ...l, is_following: follow }),
     onError: (_e, follow) => qc.setQueryData<Legislator>(keys.legislator(id), (l) => l && { ...l, is_following: !follow }),
+    onSuccess: (_d, follow) => {
+      if (follow) afterFollow(qc);
+    },
     onSettled: () => qc.invalidateQueries({ queryKey: keys.following }),
   });
 }

@@ -5,12 +5,13 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { FollowBillButton, PartyBadge, VoteControl, ZoomTarget } from '@/components/BillCard';
+import { OfficialRecord } from '@/components/OfficialRecord';
+import { BillVotes } from '@/components/Votes';
 import { BillTimeline } from '@/components/BillTimeline';
 import { CommentsSection } from '@/components/Comments';
 import {
   BillCardSkeleton,
   Button,
-  Chip,
   Empty,
   Field,
   Icon,
@@ -30,6 +31,7 @@ import { shareBill } from '@/lib/share';
 import { toast, toastError } from '@/lib/toast';
 import type { Bill } from '@/lib/types';
 import { colors, figures, fonts, onAlpha, outline, partyColors, radius, space, type } from '@/theme';
+import { TopicChip } from '@/components/TopicIcon';
 
 const FULL_TEXT_PREVIEW = 20_000;
 const MAX_MATCHES = 50;
@@ -85,7 +87,7 @@ export default function BillDetail() {
   const topics = bill.primary_tags.length ? (
     <View style={styles.tags}>
       {bill.primary_tags.map((t) => (
-        <Chip
+        <TopicChip
           key={t}
           label={t}
           small
@@ -203,6 +205,10 @@ export default function BillDetail() {
           <ReportSummary billId={bill.id} />
         </View>
       </View>
+
+      <BillVotes billId={bill.id} style={styles.section} />
+
+      <OfficialRecord billId={bill.id} congress={bill.congress_number} style={styles.section} />
 
       {wide ? null : <RelatedBills id={bill.id} />}
 

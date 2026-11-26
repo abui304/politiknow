@@ -10,7 +10,7 @@ import pytest  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
-from app import models  # noqa: E402,F401
+from app import jobs, models  # noqa: E402,F401
 from app.db import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.redis_client import redis  # noqa: E402
@@ -25,7 +25,12 @@ async def clean_state(monkeypatch):
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     await redis.flushdb()
-    monkeypatch.setattr(comments, "_enqueue", lambda *a: None)  # no Celery worker in tests
+    monkeypatch.setattr(comments, "_enqueue", lambda *a: None)  # comment jobs are tested directly
+
+    async def no_job(*_a):
+        return None
+
+    monkeypatch.setattr(jobs, "run_in_own_session", no_job)  # e.g. the feed's background trending refresh
 
     async def no_network(*_a):
         raise RuntimeError("no network in tests")

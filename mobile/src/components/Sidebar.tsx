@@ -36,6 +36,7 @@ const MAIN: Item[] = [
   },
 ];
 const MORE: Item[] = [
+  { href: '/digest', match: (p) => p.startsWith('/digest'), label: 'Your week in Congress', icon: 'book-open' },
   {
     href: '/calendar',
     match: (p) => p.startsWith('/calendar'),

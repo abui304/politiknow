@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -10,6 +11,16 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://localhost/politiknow"
     redis_url: str = "redis://localhost:6379/0"
     cors_origins: list[str] = ["http://localhost:8081", "http://localhost:19006"]
+    # The public website, for links in emails ("Open your recap").
+    web_url: str = "http://localhost:8081"
+    # This API's own public address, for links that must reach it directly (one-click unsubscribe).
+    api_url: str = "http://localhost:8000"
+    # inline: per-comment jobs run right after the request, and nothing else needs to run alongside the
+    # API. celery: they go to a Celery worker (app/worker.py) instead.
+    task_mode: Literal["inline", "celery"] = "inline"
+    # Hosted on a serverless platform with a pooled Postgres (e.g. Neon's pooler): no connection pool of
+    # our own, and no prepared-statement cache (pgbouncer in transaction mode can't keep them).
+    serverless: bool = False
 
     # Auth (spec 6.1)
     jwt_secret: str = "dev-only-change-me"
@@ -37,6 +48,7 @@ class Settings(BaseSettings):
     feed_recency_half_life_days: float = 30
     feed_cache_seconds: int = 300
     trending_threshold: float = 0.05
+    trending_max_bills: int = 5
 
     # Abuse prevention (spec 7.3)
     comments_per_hour: int = 10
@@ -48,6 +60,13 @@ class Settings(BaseSettings):
 
     # Notifications (spec 9.2)
     notifications_per_day: int = 5
+    trending_refresh_minutes: int = 30  # recalculated in the background when the feed is read and stale
+
+    # Weekly recap email (opt-in). Empty key = recaps are only shown in the app.
+    brevo_api_key: str = ""
+    email_from: str = "recap@example.com"
+    email_from_name: str = "PolitiKNOW"
+    email_daily_cap: int = 300  # Brevo's free plan; a run stops here and the next day's run continues
 
 
 @lru_cache

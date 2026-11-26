@@ -41,7 +41,8 @@ async def test_follow_bill_gets_status_alerts(client, db):
     from app.services import notify
     await notify.notify_status_change(db, bill)
     await db.commit()
-    alerts = list(await db.scalars(select(Notification).where(Notification.type == "status_update")))
+    alerts = list(await db.scalars(select(Notification).where(
+        Notification.type == "status_update", Notification.backfill.is_(False))))
     assert len(alerts) == 1
 
     await client.delete(f"/bills/{bill.id}/follow", headers=h)

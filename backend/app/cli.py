@@ -1,6 +1,11 @@
 """Manual commands:
   python -m app.cli ingest      # run the Congress.gov ingestion once
   python -m app.cli trending    # recalculate trending once
+  python -m app.cli backfill-record   # add CBO cost estimates and official related bills to existing bills (free)
+  python -m app.cli sync-votes  # fetch new House and Senate roll-call votes (also part of every ingest)
+  python -m app.cli send-recaps  # email this week's recap to everyone who opted in (Brevo; needs BREVO_API_KEY)
+  python -m app.cli prune       # delete old interaction rows and events past the 13-month limit
+  python -m app.cli metrics     # print this week's retention scorecard
   python -m app.cli seed-demo   # add sample bills + users for local UI work (no API keys needed)
   python -m app.cli normalize-hashtags  # merge spelling variants, drop generic hashtags (free)
   python -m app.cli retag       # regenerate every bill's hashtags so they reuse each other (OpenAI cost)
@@ -191,6 +196,33 @@ async def main(cmd: str, *args: str) -> None:
         elif cmd == "trending":
             from app.services.trending import recalculate
             print(await recalculate(db))
+        elif cmd == "backfill-record":
+            from app.services.congress import CongressClient
+            from app.services.ingest import record_backfill
+
+            api = CongressClient()
+            try:
+                print(f"Updated {await record_backfill(db, api)} bills.")
+            finally:
+                await api.close()
+        elif cmd == "sync-votes":
+            from app.services import votes
+            from app.services.congress import CongressClient
+
+            api = CongressClient()
+            try:
+                print(await votes.sync_votes(db, api))
+            finally:
+                await api.close()
+        elif cmd == "send-recaps":
+            from app.services import email
+            print(await email.send_recaps(db))
+        elif cmd == "prune":
+            from app import jobs
+            print(await jobs.prune(db))
+        elif cmd == "metrics":
+            from app.services.metrics import scorecard
+            print("\n".join((await scorecard(db)).lines()))
         elif cmd == "seed-demo":
             await seed_demo(db)
         elif cmd == "normalize-hashtags":

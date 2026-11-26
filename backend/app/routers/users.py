@@ -1,3 +1,4 @@
+import secrets
 import uuid
 
 from fastapi import APIRouter, HTTPException, status
@@ -6,7 +7,16 @@ from sqlalchemy import delete, func, select
 from app.deps import DB, CurrentUser, IncompleteUser
 from app.models import Bill, BillFollow, Comment, CommentVote, Follow, Legislator, LegislatorFollow, User, Vote
 from app.routers.auth import display_name_taken
-from app.schemas import CommentWithBill, FollowingOut, LegislatorBase, MeOut, MeUpdate, NotificationPrefs, ProfileOut
+from app.schemas import (
+    CommentWithBill,
+    FollowingOut,
+    LegislatorBase,
+    MeOut,
+    MeUpdate,
+    NotificationPrefs,
+    ProfileOut,
+    SinceOut,
+)
 from app.serializers import bills_out, comments_out, visible_comments
 from app.services import moderation
 
@@ -35,6 +45,7 @@ async def _me(db, user: User) -> MeOut:
         home_state=user.home_state,
         home_district=user.home_district,
         is_moderator=user.is_moderator,
+        recap_email=user.recap_email,
         created_at=user.created_at,
     )
 
@@ -58,6 +69,12 @@ async def update_me(body: MeUpdate, db: DB, user: IncompleteUser):
         user.notification_preferences = body.notification_preferences.model_dump(mode="json")
     if "push_token" in fields:
         user.push_token = body.push_token
+    if "recap_email" in fields and body.recap_email is not None:
+        if body.recap_email and not user.email:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Add an email address to get the recap by email")
+        user.recap_email = body.recap_email
+        if body.recap_email and not user.recap_token:
+            user.recap_token = secrets.token_urlsafe(32)  # signs one-click unsubscribe links
     await db.commit()
     return await _me(db, user)
 
@@ -79,6 +96,14 @@ async def delete_me(db: DB, user: IncompleteUser):
         comment.net_score = await db.scalar(
             select(func.coalesce(func.sum(CommentVote.value), 0)).where(CommentVote.comment_id == comment.id))
     await db.commit()
+
+
+@router.get("/me/since", response_model=SinceOut)
+async def since_last_visit(db: DB, user: CurrentUser):
+    """What changed for this person since their last visit (up to three lines), for the top of the feed."""
+    from app.services.since import since_last_visit as build
+
+    return await build(db, user)
 
 
 @router.get("/me/following", response_model=FollowingOut)

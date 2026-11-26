@@ -15,6 +15,7 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
 ## What the app does
 
 ### Accounts and onboarding
+- Onboarding ends with **"Who represents you?"**: find your district by location or by picking your state and district, then follow your representative and two senators in one tap (optional).
 - Sign up with email and password, choosing an anonymous **display name** (3–30 letters, numbers, or underscores). Real names are never required or shown.
 - Google sign-in is built in but stays hidden until a Google client ID is configured. Google users must still pick their own display name; the Google profile name is never used.
 - New users pick **5–10 topics** from the 34 Library of Congress policy areas (Health, Taxation, Immigration, ...). These seed the personalized feed.
@@ -102,13 +103,29 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
 - Both sources are free and public, and are cached for an hour.
 
 ### Alerts (notifications)
-- An in-app **Alerts** tab with an unread badge, for five kinds of alerts:
+- An in-app **Alerts** tab with an unread badge, for six kinds of alerts:
+  - a status change on a bill you follow, voted on, or commented on, saying what the step means and what comes next ("Passed House. A majority of the House voted for it. Next: the full Senate votes on it.")
+  - **how your members voted** on final passage or cloture of a bill you follow
   - a new bill on one of your topics
-  - a status change on a bill you follow, voted on, or commented on
   - a legislator you follow sponsoring or cosponsoring a bill
-  - a bill on your topics starting to trend
   - someone you follow commenting on a bill you've engaged with
+  - a bill on your topics starting to trend (off by default)
+- **Following a bill fills Alerts with its last 30 days** of activity, marked "Before you followed" (no badge, no push), so a first follow is never met by an empty tab.
+- Push permission is only asked for after your first follow, never at launch.
 - Settings for each alert type, plus **quiet hours**. Capped at **5 alerts a day**.
+
+### Since your last visit, and the weekly recap
+- **Since your last visit:** coming back after an hour or more, the top of the feed shows up to three lines on what changed for you: bills you follow that moved, votes by your members, and new bills on your topics. A quiet stretch gets one line ("You're caught up"); a first visit shows nothing.
+- **Your week in Congress** (Alerts tab, and the desktop sidebar): bills you follow that moved, how your members voted, what passed the House or Senate or became law, and what's on the floor. Picked by fixed rules, the same for everyone, with no AI, and it ends instead of scrolling forever.
+- **Weekly recap email** (opt-in in Settings or at the end of the recap): sent Saturday mornings through Brevo's free plan, with a one-click unsubscribe and no tracking pixels. Empty weeks aren't sent.
+
+### Recorded votes
+- **How Congress voted** on each bill page: every House and Senate roll call, with the clerk's question word for word, the result, totals by party (grey bars, always in the same order), your own members' votes, and a link to the official record. Procedural votes and amendments are folded under passage and cloture, never hidden.
+- A **Votes** tab on every member's page, with missed votes shown as a count out of the total and a note that absences have many causes.
+- **How your members voted** on the Me tab.
+- Each bill page shows "From the official record": CBO cost estimates and the related bills Congress itself links (companions, identical bills, earlier versions). Both come from Congress.gov during ingestion.
+- Members' office phone numbers power a "Contact" button on bill vote panels and member pages; it opens the phone dialer and never sends anything itself.
+- House votes come from Congress.gov; Senate votes from senate.gov's public XML files. Both are fetched in every ingestion run (`cli sync-votes` does it by hand).
 - Push notifications are wired up through Expo's free push service, but only work in a real installed build on a phone (not on web, simulators, or Expo Go), and iOS push requires a paid Apple Developer account.
 
 ### Profiles and following
@@ -184,24 +201,21 @@ npm install
 
 ## Running it
 
-Use three terminals:
+Use two terminals (nothing else needs to run: comment moderation runs right after each comment, and trending refreshes itself):
 
 ```bash
 # 1. API  ->  http://localhost:8000/docs (interactive API docs)
 #    --host 0.0.0.0 lets the iOS Simulator and phones reach it, not just the browser
 cd backend && .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-# 2. Background jobs (ingestion 4x/day, trending, moderation, alerts)
-cd backend && .venv/bin/celery -A app.worker worker --beat --pool=solo --loglevel=info
-
-# 3. App
+# 2. App
 cd mobile && npx expo start
 #   press  w  -> web browser (http://localhost:8081)
 #   press  i  -> iOS Simulator (needs Xcode)
 #   or scan the QR code with Expo Go on your phone (same Wi-Fi)
 ```
 
-Restart the worker (terminal 2) after pulling backend code changes; it doesn't reload on its own.
+Locally, run `python -m app.cli ingest` when you want new bills and votes. In production the scheduled jobs run from GitHub Actions (see "Hosting"). If you'd rather keep a Celery worker, set `TASK_MODE=celery` and run `.venv/bin/celery -A app.worker worker --beat --pool=solo`.
 
 ### Manual commands
 
@@ -211,9 +225,14 @@ Run from `backend/`:
 |---|---|---|
 | `.venv/bin/python -m app.cli ingest` | Pull the next batch of bills now | OpenAI, about 0.8¢ per new bill |
 | `.venv/bin/python -m app.cli trending` | Recalculate trending now | Free |
+| `.venv/bin/python -m app.cli sync-votes` | Fetch new House and Senate roll-call votes (also part of every ingest) | Free |
+| `.venv/bin/python -m app.cli send-recaps` | Email this week's recap to everyone who opted in (needs `BREVO_API_KEY`) | Free up to 300 a day |
+| `.venv/bin/python -m app.cli metrics` | Print this week's retention scorecard (weekly informed followers, activation, cohorts, alert opens) | Free |
+| `.venv/bin/python -m app.cli prune` | Delete old interaction rows and events older than 13 months (runs nightly) | Free |
 | `.venv/bin/python -m app.cli normalize-hashtags` | Merge hashtag spelling variants, drop generic ones | Free |
 | `.venv/bin/python -m app.cli retag` | Regenerate every bill's hashtags so they reuse each other | OpenAI, one call per bill |
 | `.venv/bin/python -m app.cli backfill-cosponsors` | Fetch sponsor and cosponsor details for bills ingested before they were tracked | Free (Congress.gov only) |
+| `.venv/bin/python -m app.cli backfill-record` | Fetch CBO cost estimates and the bills Congress links to each one, for bills ingested before they were tracked | Free (Congress.gov only) |
 | `.venv/bin/python -m app.cli backfill-timelines` | Build every bill's timeline from its Congress.gov actions and reset its status | Free (Congress.gov only) |
 | `.venv/bin/python -m app.cli sync-members` | Refresh every legislator's photo, years in office, and office details (ingestion also does up to 100 per run, monthly per member) | Free (Congress.gov only) |
 | `.venv/bin/python -m app.cli sync-roster` | Mark who's serving now from Congress.gov's current-member list (ingestion also does this weekly) | Free (Congress.gov only) |
@@ -231,6 +250,7 @@ Demo logins after `seed-demo`: `civic_owl@example.com` / `politiknow123` (also `
 | Congress.gov API key | Free | https://api.congress.gov/sign-up | `DEMO_KEY` works but is heavily rate-limited |
 | OpenAI API key | Pay per use (fractions of a cent per bill) | https://platform.openai.com | Summaries show a labeled excerpt of the bill text; topics come only from Congress.gov's official policy area; no hashtags or AI moderation |
 | Google sign-in | Free | Google Cloud Console → OAuth client IDs | Google button is hidden |
+| Brevo (recap email) | Free up to 300 emails a day | https://www.brevo.com, plus a verified sending domain (about $10–15 a year) | The recap stays in the app; no email is sent |
 | Push notifications | Free on Android; iOS needs a $99/yr Apple Developer account | EAS project + Firebase | The in-app Alerts tab still works everywhere |
 
 Backend keys go in `backend/.env`; app settings (API URL override, Google client IDs) go in `mobile/.env.local`. See each folder's `.env.example`.
@@ -250,18 +270,34 @@ Backend keys go in `backend/.env`; app settings (API URL override, Google client
 | `REPORTS_TO_HIDE` | 3 | Reports that hide a comment |
 | `SHADOW_BAN_AFTER_HIDDEN` | 3 | Hidden comments before a shadow ban |
 | `NOTIFICATIONS_PER_DAY` | 5 | Alert cap per user |
+| `TRENDING_MAX_BILLS` | 5 | At most this many bills carry the Trending badge |
+| `TASK_MODE` | inline | `inline`: no worker needed. `celery`: per-comment jobs go to a Celery worker |
+| `SERVERLESS` | false | Set on serverless hosting with a pooled Postgres (no connection pool, no prepared statements) |
+| `BREVO_API_KEY` / `EMAIL_FROM` | (empty) | Recap email sending; empty = no email |
+| `WEB_URL` / `API_URL` | localhost | Public addresses, for links in emails |
 
 The full list is in `backend/app/config.py`.
 
 ## Not built yet
 
 - **Apple sign-in and iOS push:** need a paid Apple Developer account.
-- **Password reset and real email:** verification links are only printed to the API log; no email provider is set up.
-- **Editing comments, deleting accounts.**
+- **Password reset:** verification links are only printed to the API log. The only email sent is the opt-in weekly recap.
+- **Editing comments.**
 - **Ads and premium subscription** (spec Phase 3).
 - **State and local bills, filtering the feed by location:** planned in spec section 12.1.
 - **Finding your district by ZIP code:** ZIP codes often span several districts, so only location (or picking on the map) is offered.
-- **Amendments, committee actions, and floor votes** as their own items (spec Phase 3).
+- **Amendments and committee hearings** as their own items (spec Phase 3). Roll-call votes are in.
+
+## Hosting (free tiers)
+
+- **Website:** Vercel's free plan, from `cd mobile && npx expo export -p web` (set `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_WEB_URL`).
+- **API:** any Python host. With a pooled Postgres (Neon) set `SERVERLESS=true`.
+- **Database and cache:** Neon Postgres (free) and Upstash Redis (free).
+- **Scheduled jobs:** `.github/workflows/jobs.yml` runs ingest 4 times a day, nightly cleanup, and Saturday recap emails. Add the secrets it lists under the repository's Settings → Secrets and variables → Actions. Free for public repositories; private ones get a monthly allowance.
+
+## Measuring retention
+
+`python -m app.cli metrics` prints the weekly scorecard. The north star is **weekly informed followers**: people with at least one follow who opened an update about something they follow that week. It's all computed from three things the app keeps, with no outside analytics: the days each person used the app (`activity_days`), when alerts were opened (`notifications.opened_at`), and a short fixed list of events (recap opened, catch-up line opened, share, and a few more; see `models.EVENT_NAMES`). No search text, IPs or device details. Raw events are deleted after 13 months.
 
 ## Tests and checks
 

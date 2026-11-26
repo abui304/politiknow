@@ -45,6 +45,14 @@ HASHTAG_GUIDANCE = (
 
 NEUTRALITY = " Stay strictly neutral: do not take a side or describe the bill as good or bad."
 
+# Every call about a bill starts with the same system message and then the bill text; only the short task
+# at the end differs. OpenAI caches a repeated prefix, so the second and third calls for a bill pay the
+# cached input rate for its text (about a tenth of the normal rate).
+SHARED_SYSTEM = (
+    "You are a careful legislative analyst. You will be given the text of a bill in the U.S. Congress, "
+    "followed by one task. Do exactly that task." + NEUTRALITY
+)
+
 
 def enabled() -> bool:
     """False in no-key mode, where summaries are labeled excerpts instead."""
@@ -59,12 +67,17 @@ def _bill_input(title: str, text: str) -> str:
     return f"Title: {title}\n\n{text[: settings.max_bill_chars_for_llm]}"
 
 
-async def _chat(system: str, user: str, *, json_mode: bool = False) -> str:
+async def _chat(system: str, user: str, *, json_mode: bool = False, task: str | None = None) -> str:
+    """One completion. With `task`, the task goes in a final message after `user`, so calls that share
+    `system` and `user` (the bill text) share a cacheable prefix."""
     client = _client()
     assert client
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    if task:
+        messages.append({"role": "user", "content": task})
     resp = await client.chat.completions.create(
         model=settings.openai_model,
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        messages=messages,
         response_format={"type": "json_object"} if json_mode else None,
     )
     return (resp.choices[0].message.content or "").strip()
@@ -80,8 +93,8 @@ async def summarize(title: str, text: str) -> tuple[str, str]:
     if not _client():
         return _fallback_excerpt(text, 120), _fallback_excerpt(text, 400)
     body = _bill_input(title, text)
-    simple = await _chat(SIMPLE_PROMPT + NEUTRALITY, body)
-    detailed = await _chat(DETAILED_PROMPT + NEUTRALITY, body)
+    simple = await _chat(SHARED_SYSTEM, body, task="Task: " + SIMPLE_PROMPT)
+    detailed = await _chat(SHARED_SYSTEM, body, task="Task: " + DETAILED_PROMPT)
     return simple, detailed
 
 
@@ -102,9 +115,9 @@ async def generate_tags(
     if not _client():
         return Tags(primary=official, sub=[])
     try:
-        system = TAG_PROMPT.format(tags=", ".join(POLICY_AREAS))
-        system += HASHTAG_GUIDANCE.format(known=", ".join(known_hashtags[:200]))
-        raw = await _chat(system, _bill_input(title, text), json_mode=True)
+        task = TAG_PROMPT.format(tags=", ".join(POLICY_AREAS))
+        task += HASHTAG_GUIDANCE.format(known=", ".join(known_hashtags[:200]))
+        raw = await _chat(SHARED_SYSTEM, _bill_input(title, text), json_mode=True, task="Task: " + task)
         data = json.loads(raw)
     except Exception as e:  # tagging failure shouldn't block ingestion
         log.warning("Tag generation failed for %r: %s", title, e)

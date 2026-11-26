@@ -14,6 +14,7 @@ import { topicsFor } from '@/lib/topics';
 import { useWide } from '@/lib/layout';
 import type { Chamber, PartyFilter, StageFilter, Tag } from '@/lib/types';
 import { colors, figures, fonts, motion, outline, party as parties, radius, space, type } from '@/theme';
+import { TopicChip } from '@/components/TopicIcon';
 
 const PARTIES: PartyFilter[] = ['D', 'R', 'I'];
 const CHAMBERS: { key: Chamber; label: string }[] = [
@@ -299,7 +300,7 @@ export default function Search() {
             <View style={styles.wrap}>
               <Txt style={type.small}>Filed under</Txt>
               {filedUnder.map((t) => (
-                <Chip key={t} small label={t} onPress={() => setTag(t)} accessibilityLabel={`Show only bills filed under ${t}`} />
+                <TopicChip key={t} small label={t} onPress={() => setTag(t)} accessibilityLabel={`Show only bills filed under ${t}`} />
               ))}
             </View>
           ) : null}
@@ -507,7 +508,7 @@ function Browse({
           <Txt style={type.small}>The Library of Congress files every bill under one of these.</Txt>
           <View style={styles.wrap}>
             {(allTopics ? tags : tags.slice(0, TOPICS_SHOWN)).map((t) => (
-              <Chip key={t} label={t} onPress={() => onTag(t)} accessibilityLabel={`Show bills about ${t}`} />
+              <TopicChip key={t} label={t} onPress={() => onTag(t)} accessibilityLabel={`Show bills about ${t}`} />
             ))}
             {tags.length > TOPICS_SHOWN ? (
               <Tap onPress={() => setAllTopics((a) => !a)} accessibilityRole="button" style={styles.clearLink}>
@@ -582,7 +583,7 @@ function TopicFilter({ tags, value, onChange }: { tags: Tag[]; value: string | n
       />
       <View style={styles.wrap}>
         {shown.map((t) => (
-          <Chip key={t} label={t} selected={value === t} onPress={() => onChange(value === t ? null : t)} />
+          <TopicChip key={t} label={t} selected={value === t} onPress={() => onChange(value === t ? null : t)} />
         ))}
         {!shown.length ? (
           <Txt style={type.small}>{`No topic covers “${find.trim()}”. Try another word, or search for it instead.`}</Txt>

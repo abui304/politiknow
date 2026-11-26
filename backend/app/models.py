@@ -75,6 +75,14 @@ class User(Base):
     # from their location without storing it (see routers/places.py). District 0 = at-large/delegate.
     home_state: Mapped[str | None] = mapped_column(String(2))
     home_district: Mapped[int | None] = mapped_column(SmallInteger)
+    # When the previous visit ended: what "since your last visit" compares against. Moved forward on the
+    # first request of each new visit (deps.py), so it trails last_active_at by one visit.
+    previous_visit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Opted in to the weekly recap email (off by default). The token signs one-click unsubscribe links.
+    recap_email: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    recap_token: Mapped[str | None] = mapped_column(String(64), unique=True)
+    # The Monday of the last week whose recap was emailed: a second run that week skips this person.
+    recap_sent_for: Mapped[date | None] = mapped_column(Date)
     last_active_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
@@ -117,6 +125,11 @@ class Bill(Base):
     # {stage: ISO date} for each milestone reached (see app/timeline.py).
     milestones: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     congress_url: Mapped[str | None] = mapped_column(Text)
+    # Congressional Budget Office cost estimates, as Congress.gov lists them: [{title, description, url, date}]
+    cbo_estimates: Mapped[list[dict]] = mapped_column(JSONB, default=list, server_default="[]")
+    # Bills Congress.gov links to this one (identical companion bills, earlier versions, procedurally related),
+    # as identified by the House, Senate or CRS: [{congress, type, number, title, relationships, latest}]
+    official_related: Mapped[list[dict]] = mapped_column(JSONB, default=list, server_default="[]")
     net_score: Mapped[int] = mapped_column(Integer, default=0)
     comment_count: Mapped[int] = mapped_column(Integer, default=0)
     # Current (not withdrawn) cosponsors, as reported by Congress.gov; the list is refetched when it changes.
@@ -363,9 +376,91 @@ class Notification(Base):
     body: Mapped[str] = mapped_column(Text)
     bill_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("bills.id", ondelete="CASCADE"))
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    # When it was opened, and from where (in_app, push, email): for alert open-to-visit rates.
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    channel: Mapped[str | None] = mapped_column(String(10))
+    # Earlier activity filled in when a bill is first followed, so Alerts isn't empty on day one.
+    # Never pushed, and doesn't count against the daily cap.
+    backfill: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = created_at()
 
     __table_args__ = (Index("ix_notifications_user_time", "user_id", "created_at"),)
+
+
+class ActivityDay(Base):
+    """One row per user per day they used the app: the basis for weekly and cohort retention.
+    Day precision only; nothing about what they looked at."""
+
+    __tablename__ = "activity_days"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True, index=True)
+    platform: Mapped[str | None] = mapped_column(String(10))
+
+
+# The only events recorded. No free text, no search terms, no IP or browser details.
+EVENT_NAMES = (
+    "recap_open",
+    "since_item_open",
+    "floor_week_open",
+    "glossary_tap",
+    "share",
+    "contact_member",
+)
+
+
+class Event(Base):
+    __tablename__ = "events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    day: Mapped[date] = mapped_column(Date, index=True)
+    name: Mapped[str] = mapped_column(String(30))
+    ref_id: Mapped[str | None] = mapped_column(String(64))
+
+
+class RollCall(Base):
+    """A recorded vote in the House or Senate (Congress.gov house-vote API; senate.gov roll-call XML)."""
+
+    __tablename__ = "roll_calls"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    chamber: Mapped[str] = mapped_column(String(10))  # house / senate
+    congress: Mapped[int] = mapped_column(Integer)
+    session: Mapped[int] = mapped_column(SmallInteger)
+    number: Mapped[int] = mapped_column(Integer)
+    voted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    # The official question, word for word ("On Passage", "On the Cloture Motion"). Never rewritten.
+    question: Mapped[str] = mapped_column(Text)
+    # passage / cloture / amendment / procedural / nomination / other (votes.classify)
+    kind: Mapped[str] = mapped_column(String(15))
+    result: Mapped[str] = mapped_column(String(100))
+    bill_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("bills.id", ondelete="SET NULL"), index=True)
+    # The measure as the source names it ("H.R. 1148", "PN 123"), kept even when no bill row matches.
+    measure: Mapped[str | None] = mapped_column(String(50))
+    yea: Mapped[int] = mapped_column(Integer, default=0)
+    nay: Mapped[int] = mapped_column(Integer, default=0)
+    present: Mapped[int] = mapped_column(Integer, default=0)
+    not_voting: Mapped[int] = mapped_column(Integer, default=0)
+    # {"D": {"yea": 210, "nay": 2, ...}, "R": {...}, "I": {...}}
+    party_totals: Mapped[dict] = mapped_column(JSONB, default=dict)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+    __table_args__ = (UniqueConstraint("chamber", "congress", "session", "number"),)
+
+
+class MemberVote(Base):
+    __tablename__ = "member_votes"
+
+    roll_call_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("roll_calls.id", ondelete="CASCADE"), primary_key=True
+    )
+    bioguide_id: Mapped[str] = mapped_column(String(20), primary_key=True, index=True)
+    # Yea / Nay / Present / Not Voting (Aye and No are stored as Yea and Nay)
+    position: Mapped[str] = mapped_column(String(12))
+
+    roll_call: Mapped[RollCall] = relationship()
 
 
 class IngestState(Base):

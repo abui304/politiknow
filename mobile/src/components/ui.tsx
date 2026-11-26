@@ -313,6 +313,7 @@ export function Chip({
   color,
   small,
   accessibilityLabel,
+  leading,
 }: {
   label: string;
   selected?: boolean;
@@ -320,9 +321,14 @@ export function Chip({
   color?: string;
   small?: boolean;
   accessibilityLabel?: string;
+  /** Drawn before the label, e.g. a topic's icon. Gets the chip's text color. */
+  leading?: (color: string) => ReactNode;
 }) {
   const filled = selected ? (color ?? colors.ink) : undefined;
+  const textColor = selected && !color ? '#fff' : colors.inkSoft;
   const content = (
+    <>
+    {leading ? leading(textColor) : null}
     <Text
       style={[
         styles.chipText,
@@ -335,6 +341,7 @@ export function Chip({
       numberOfLines={1}>
       {label}
     </Text>
+    </>
   );
   const chipStyle = [styles.chip, small && styles.chipSmall, filled && { backgroundColor: filled, borderColor: filled }];
   if (!onPress) return <View style={chipStyle}>{content}</View>;
@@ -527,12 +534,23 @@ export function Loading({ label = 'Loading…' }: { label?: string }) {
 }
 
 /** An empty or error state. Always offers a next step: `action` is required. */
-export function Empty({ icon, title, body, action }: { icon: IconName; title: string; body?: string; action: ReactNode }) {
+export function Empty({
+  icon,
+  art,
+  title,
+  body,
+  action,
+}: {
+  icon?: IconName;
+  /** A drawn picture in place of the icon, e.g. the steaming cup for a quiet week. */
+  art?: ReactNode;
+  title: string;
+  body?: string;
+  action: ReactNode;
+}) {
   return (
     <View style={[styles.center, { paddingVertical: 48, gap: space.sm }]}>
-      <View style={styles.emptyIcon}>
-        <Icon name={icon} size={24} color={colors.inkSoft} />
-      </View>
+      <View style={styles.emptyIcon}>{art ?? (icon ? <Icon name={icon} size={24} color={colors.inkSoft} /> : null)}</View>
       <Txt style={[type.h3, { textAlign: 'center' }]}>{title}</Txt>
       {body ? <Txt style={[type.small, { textAlign: 'center', maxWidth: 320 }]}>{body}</Txt> : null}
       {action ? <View style={{ marginTop: space.sm }}>{action}</View> : null}
@@ -854,6 +872,9 @@ const styles = StyleSheet.create({
     marginBottom: space.sm,
   },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingVertical: 6,
     paddingHorizontal: space.md,
     borderRadius: radius.pill,

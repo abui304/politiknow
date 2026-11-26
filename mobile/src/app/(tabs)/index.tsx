@@ -4,6 +4,7 @@ import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'r
 
 import { BillCard } from '@/components/BillCard';
 import { FeedRail } from '@/components/FeedRail';
+import { SinceStrip } from '@/components/SinceStrip';
 import { Logo } from '@/components/Logo';
 import { useCommandMenu } from '@/components/CommandMenu';
 import { hasKeyboard } from '@/lib/device';
@@ -79,6 +80,7 @@ export default function Feed() {
                 <Txt style={type.meta}>{today()}</Txt>
                 <Title>What Congress is up to</Title>
               </View>
+              <SinceStrip />
               {rail ? null : (
                 <Tap
                   onPress={() => router.push('/calendar')}

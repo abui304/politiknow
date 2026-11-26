@@ -18,6 +18,7 @@ const TYPE_LABELS: Record<NotificationType, string> = {
   trending: 'Trending on my topics',
   social: 'People I follow commenting',
   legislator: 'New bills from legislators I follow',
+  member_vote: 'How my members voted on bills I follow',
 };
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -71,6 +72,16 @@ function SettingsForm({ me }: { me: Me }) {
           />
         </Row>
         {quiet ? <QuietHoursEditor value={quiet} onSave={(q) => setPrefsAndSave({ ...prefs, quiet_hours: q })} /> : null}
+        <Row label={me.email ? `Weekly recap by email, Saturday mornings (${me.email})` : 'Weekly recap by email (add an email address to your account first)'}>
+          <Switch
+            value={me.recap_email}
+            disabled={!me.email}
+            onValueChange={(v) => save({ recap_email: v }, v ? 'You’ll get your recap by email on Saturdays' : 'Recap emails turned off')}
+            trackColor={{ true: colors.ink, false: colors.hairline }}
+            thumbColor={colors.surface}
+            {...({ activeThumbColor: colors.surface } as object)}
+          />
+        </Row>
       </Section>
   );
 

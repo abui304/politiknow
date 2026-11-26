@@ -4,7 +4,7 @@ import type { ColorValue } from 'react-native';
 
 import { Icon, type IconName } from '@/components/ui';
 import { useWide } from '@/lib/layout';
-import { registerForPush } from '@/lib/push';
+import { registerForPush, usePushOpens } from '@/lib/push';
 import { useNotifications } from '@/lib/queries';
 import { colors, fonts } from '@/theme';
 
@@ -21,6 +21,7 @@ export default function TabsLayout() {
   useEffect(() => {
     registerForPush();
   }, []);
+  usePushOpens();
 
   return (
     <Tabs

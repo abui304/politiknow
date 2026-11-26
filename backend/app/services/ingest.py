@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import timeline
 from app.config import settings
 from app.models import Bill, BillCosponsor, IngestState
-from app.services import blurhash, hashtags, legislators, llm, notify
+from app.services import blurhash, hashtags, legislators, llm, notify, votes
 from app.services.congress import CongressClient
 
 log = logging.getLogger(__name__)
@@ -52,6 +52,28 @@ async def _set_state(db: AsyncSession, key: str, value: str) -> None:
     await db.merge(IngestState(key=key, value=value))
 
 
+def _estimates(detail: dict) -> list[dict]:
+    return [
+        {"title": e.get("title"), "description": e.get("description"), "url": e.get("url"),
+         "date": (e.get("pubDate") or "")[:10] or None}
+        for e in detail.get("cboCostEstimates") or [] if e.get("url")
+    ]
+
+
+def _related(items: list[dict]) -> list[dict]:
+    out = []
+    for r in items[:20]:
+        if not (r.get("type") and r.get("number")):
+            continue
+        rels = [d.get("type") for d in (r.get("relationshipDetails") or []) if d.get("type")]
+        out.append({
+            "congress": r.get("congress"), "type": str(r["type"]).upper(), "number": int(r["number"]),
+            "title": r.get("title"), "relationships": rels,
+            "latest": (r.get("latestAction") or {}).get("text"),
+        })
+    return out
+
+
 async def ingest_bill(
     db: AsyncSession,
     api: CongressClient,
@@ -85,11 +107,19 @@ async def ingest_bill(
     bill.congress_url = detail.get("legislationUrl")
     if detail.get("introducedDate"):
         bill.introduced_date = date.fromisoformat(detail["introducedDate"])
-    # Timeline: re-read the action list only when there's a new latest action.
-    if latest.get("text") != bill.latest_action_text or not bill.milestones:
+    # Official cost estimates come with the bill record, at no extra cost.
+    bill.cbo_estimates = _estimates(detail)
+    # Timeline and related bills: re-read only when there's a new latest action.
+    action_changed = latest.get("text") != bill.latest_action_text or not bill.milestones
+    if action_changed:
         bill.milestones = timeline.milestones(
             await api.actions(congress, bill_type, number), bill.introduced_date
         )
+    if action_changed and (detail.get("relatedBills") or {}).get("count"):
+        try:
+            bill.official_related = _related(await api.related_bills(congress, bill_type, number))
+        except Exception as e:  # nice to have; never blocks the bill
+            log.info("Related bills for %s %s-%s unavailable: %s", congress, bill_type, number, e)
     bill.latest_action_text = latest.get("text")
     bill.status = timeline.status(bill_type, bill.milestones)
     bill.last_action_date = _parse_dt(latest.get("actionDate")) or _parse_dt(detail.get("updateDate"))
@@ -218,6 +248,13 @@ async def _run_ingestion(db: AsyncSession, api: CongressClient, now: datetime, f
         await db.rollback()
         log.exception("Failed to compute photo placeholders")
 
+    # Recorded House and Senate votes since the last run (and "how your members voted" alerts).
+    try:
+        counts["votes"] = await votes.sync_votes(db, api)
+    except Exception:
+        await db.rollback()
+        log.exception("Failed to sync recorded votes")
+
     # Step 7: save our position. Once the window is exhausted, the next run starts where it ended.
     offset = start + len(listed)
     if offset >= total:
@@ -233,3 +270,22 @@ async def _run_ingestion(db: AsyncSession, api: CongressClient, now: datetime, f
     result = {**counts, "backlog_remaining": max(total - offset, 0), "window": f"{window_from} -> {window_to}"}
     log.info("Ingestion done: %s", result)
     return result
+
+
+async def record_backfill(db: AsyncSession, api: CongressClient) -> int:
+    """CBO cost estimates and official related bills for every published bill (two free calls each)."""
+    done = 0
+    for bill in list(await db.scalars(select(Bill).where(Bill.is_published.is_(True)))):
+        try:
+            detail = await api.bill_detail(bill.congress_number, bill.bill_type, bill.bill_number)
+            bill.cbo_estimates = _estimates(detail)
+            if (detail.get("relatedBills") or {}).get("count"):
+                bill.official_related = _related(
+                    await api.related_bills(bill.congress_number, bill.bill_type, bill.bill_number)
+                )
+            await db.commit()
+            done += 1
+        except Exception as e:
+            await db.rollback()
+            log.warning("Record backfill failed for %s: %s", bill.label, e)
+    return done

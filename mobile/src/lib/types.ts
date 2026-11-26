@@ -7,7 +7,7 @@ export type Tokens = {
   needs_onboarding: boolean;
 };
 
-export type NotificationType = 'new_bill' | 'status_update' | 'trending' | 'social' | 'legislator';
+export type NotificationType = 'new_bill' | 'status_update' | 'trending' | 'social' | 'legislator' | 'member_vote';
 
 export type NotificationPrefs = {
   types: Record<NotificationType, boolean>;
@@ -30,6 +30,8 @@ export type Me = {
   home_state: string | null;
   home_district: number | null;
   is_moderator: boolean;
+  /** Gets the weekly recap by email (opt-in). */
+  recap_email: boolean;
   created_at: string;
 };
 
@@ -99,6 +101,8 @@ export type LegislatorBase = {
   image_url: string | null;
   /** Placeholder drawn while the photo loads (see backend services/blurhash.py). */
   image_blurhash?: string | null;
+  /** Their Washington office. */
+  phone?: string | null;
 };
 
 export type CareerSpan = {
@@ -247,6 +251,8 @@ export type AppNotification = {
   body: string;
   bill_id: string | null;
   is_read: boolean;
+  /** Earlier activity filled in when the bill was followed ("Before you followed"). */
+  backfill: boolean;
   created_at: string;
 };
 
@@ -308,3 +314,79 @@ export type SummaryReportGroup = {
   summary_detailed: string | null;
   reports: SummaryReport[];
 };
+
+// ---------- recorded votes ----------
+
+export type PartyTally = { yea: number; nay: number; present: number; not_voting: number };
+
+export type MemberPosition = LegislatorBase & {
+  position: 'Yea' | 'Nay' | 'Present' | 'Not Voting' | string;
+  note: string; // "Your representative", "Your senator", "You follow"
+};
+
+export type RollCall = {
+  id: string;
+  chamber: Chamber;
+  congress: number;
+  session: number;
+  number: number;
+  voted_at: string;
+  /** The official question, word for word. */
+  question: string;
+  kind: 'passage' | 'cloture' | 'amendment' | 'nomination' | 'procedural' | 'other';
+  result: string;
+  measure: string | null;
+  /** Set only when the bill is published in the app. */
+  bill_id: string | null;
+  yea: number;
+  nay: number;
+  present: number;
+  not_voting: number;
+  party_totals: Record<string, PartyTally>;
+  source_url: string | null;
+  your_members: MemberPosition[];
+};
+
+export type MemberVote = {
+  roll_call: RollCall;
+  position: string;
+  bill_id: string | null;
+  bill_label: string | null;
+  bill_title: string | null;
+};
+
+export type MemberVotesPage = { items: MemberVote[]; next_cursor: number | null; missed: number; eligible: number };
+
+// ---------- weekly recap ----------
+
+export type DigestBill = { id: string; label: string; title: string; sponsor_party: string | null; what: string };
+
+export type Digest = {
+  week_start: string;
+  followed: DigestBill[];
+  votes: RollCall[];
+  passed: DigestBill[];
+  floor: { chamber: Chamber; label: string; bill_id: string | null }[];
+  is_empty: boolean;
+};
+
+// ---------- since your last visit ----------
+
+export type SinceItem = { kind: 'bills' | 'members' | 'topics'; text: string; bill_id: string | null; tag: string | null };
+/** `since` is null on a first visit, when the strip is hidden. */
+export type Since = { since: string | null; items: SinceItem[] };
+
+// ---------- the official record around a bill ----------
+
+export type CostEstimate = { title: string | null; description: string | null; url: string; date: string | null };
+export type OfficialRelated = {
+  label: string;
+  congress: number | null;
+  title: string | null;
+  /** Official wording: "Identical bill", "Related bill", "Procedurally-related"… */
+  relationships: string[];
+  latest: string | null;
+  bill_id: string | null;
+  url: string;
+};
+export type BillRecord = { cbo_estimates: CostEstimate[]; related: OfficialRelated[] };

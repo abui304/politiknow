@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-PolitiKNOW: federal bills pulled from Congress.gov, summarized by GPT-6 Luna, shown in a personalized social feed. `backend/` is FastAPI + async SQLAlchemy (asyncpg) + PostgreSQL + Redis + Celery; `mobile/` is one Expo Router app for iOS, Android, and web. `README.md` is the authoritative feature description and is kept up to date with user-facing changes; `PolitiKNOW_Technical_Spec.docx` is the product spec that code comments cite as "spec X.Y".
+PolitiKNOW: federal bills pulled from Congress.gov, summarized by GPT-6 Luna, shown in a personalized social feed. `backend/` is FastAPI + async SQLAlchemy (asyncpg) + PostgreSQL + Redis (Celery optional); `mobile/` is one Expo Router app for iOS, Android, and web. `README.md` is the authoritative feature description and is kept up to date with user-facing changes; `PolitiKNOW_Technical_Spec.docx` is the product spec that code comments cite as "spec X.Y".
 
 ## Commands
 
@@ -10,7 +10,7 @@ Backend (run from `backend/`, always via `.venv/bin/`):
 
 ```bash
 .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000   # API, docs at /docs
-.venv/bin/celery -A app.worker worker --beat --pool=solo --loglevel=info   # jobs; restart after code changes
+.venv/bin/python -m app.cli ingest                 # scheduled in production by GitHub Actions; run by hand locally
 .venv/bin/pytest                                   # all tests (needs local postgres db `politiknow_test` + redis)
 .venv/bin/pytest tests/test_comments.py::test_name # single test
 .venv/bin/ruff check .                             # lint (line length 120)
@@ -33,11 +33,13 @@ Run backend tests + ruff, and mobile typecheck + lint, before calling work done.
 
 **Backend layering.** `app/routers/` are thin HTTP handlers; logic lives in `app/services/` (ingest, congress client, llm, feed ranking, trending, hashtags, legislators, district_maps, floor, moderation, notify). `app/serializers.py` turns ORM rows into the Pydantic models in `app/schemas.py`, batching the per-user fields (my vote, followed, etc.) so list endpoints avoid N+1 queries. `app/deps.py` provides `DB`, `RedisDep`, `CurrentUser` (requires a display name) and `IncompleteUser` (for social-login users who haven't picked one yet). All settings come from `app/config.py` / `backend/.env`.
 
-**Ingestion pipeline** (`services/ingest.py`, Celery beat 4x/day): pulls bills updated in a time window oldest-first, capped at `INGEST_MAX_BILLS_PER_RUN`, and resumes from a saved window offset when there is a backlog. It only re-fetches actions/cosponsors when they changed and only calls OpenAI when bill text is new or changed. Bill status is the furthest timeline step reached (`app/timeline.py`) and never moves backwards. Bills without published text stay hidden. Changes here directly affect OpenAI spend.
+**Ingestion pipeline** (`services/ingest.py`, 4x/day from GitHub Actions): pulls bills updated in a time window oldest-first, capped at `INGEST_MAX_BILLS_PER_RUN`, and resumes from a saved window offset when there is a backlog. It only re-fetches actions/cosponsors when they changed and only calls OpenAI when bill text is new or changed. Bill status is the furthest timeline step reached (`app/timeline.py`) and never moves backwards. Bills without published text stay hidden. Changes here directly affect OpenAI spend.
 
 **No OpenAI key is a supported mode.** `services/llm.py` falls back to a labeled text excerpt, the official policy area as the only topic, no hashtags, and no moderation. Keep new LLM features degrading the same way.
 
-**Celery tasks** each run in a fresh event loop via `worker._run`, using `worker_sessionmaker()` (NullPool), so they don't share the API's engine/pool. Comment moderation and social notifications are enqueued from `routers/comments.py` (`_enqueue`, which tests monkeypatch out).
+**Background work** lives in `app/jobs.py` as plain async functions. By default (`TASK_MODE=inline`) per-comment moderation and social notifications run right after the request via FastAPI background tasks (`routers/comments.py` `_enqueue`, which tests monkeypatch out), trending recalculates itself when the feed is read and stale, and scheduled jobs (ingest 4x/day, which also syncs roll-call votes; nightly prune; Saturday recap emails) run from GitHub Actions (`.github/workflows/jobs.yml`) as `python -m app.cli <command>`. `TASK_MODE=celery` keeps the old Celery worker (`app/worker.py`). Jobs open their own session with `worker_sessionmaker()` (NullPool).
+
+**Votes** (`services/votes.py`): House roll calls from Congress.gov's house-vote API (always send `format=json`; the API defaults to XML), Senate roll calls from senate.gov XML, matched to legislators by state and last name. `notify.notify_member_votes` alerts bill followers about their own members' votes on passage and cloture only.
 
 **Feed** (`services/feed.py`) scores bills from topic match, recency half-life, trending, followed users, and follows, and attaches a human-readable `reason`. The formula and reason priority are documented in the README; keep the two in sync.
 
@@ -52,6 +54,8 @@ Run backend tests + ruff, and mobile typecheck + lint, before calling work done.
 ## Project rules
 
 - UI uses line icons only, never emoji. Bill cards keep full party colors (blue D, red R, yellow I).
-- Don't add paid services. OpenAI usage is the only accepted cost; Apple sign-in/iOS push, email providers, ads, and premium are intentionally deferred (see README "Not built yet").
+- Don't add paid services. OpenAI usage is the only accepted cost, plus Brevo's free plan for the one opt-in weekly recap email (no other email). Apple sign-in/iOS push, ads, and premium are intentionally deferred (see README "Not built yet").
+- Retention features stay calm and neutral: no streaks, guilt or teaser alerts, outrage ranking, leaderboards, or tracking SDKs. Votes are shown verbatim from the clerks with grey tallies in fixed party order; recap and "since your last visit" picks follow the published rules in `services/digest.py` and `services/since.py`, never AI.
+- Analytics are limited to `activity_days`, `notifications.opened_at`, and the fixed event list in `models.EVENT_NAMES`; never log search text, IPs or devices.
 - Users are anonymous by design: show display names only, never real or Google profile names.
 - Schema changes need an Alembic migration. If existing data needs a backfill, add a `cli` command and note it in the README.

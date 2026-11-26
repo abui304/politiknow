@@ -3,7 +3,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
@@ -20,14 +20,20 @@ router = APIRouter(tags=["comments"])
 log = logging.getLogger(__name__)
 
 
-def _enqueue(task_name: str, comment_id: uuid.UUID) -> None:
-    """Background work must never block or fail the user's request."""
-    from app import worker
+def _enqueue(background: BackgroundTasks, task_name: str, comment_id: uuid.UUID) -> None:
+    """Background work must never block or fail the user's request. By default it runs right after the
+    response is sent; with TASK_MODE=celery it goes to a Celery worker instead."""
+    if settings.task_mode == "celery":
+        from app import worker
 
-    try:
-        getattr(worker, task_name).delay(str(comment_id))
-    except Exception:
-        log.exception("Could not enqueue %s for comment %s", task_name, comment_id)
+        try:
+            getattr(worker, task_name).delay(str(comment_id))
+        except Exception:
+            log.exception("Could not enqueue %s for comment %s", task_name, comment_id)
+        return
+    from app.jobs import run_in_own_session
+
+    background.add_task(run_in_own_session, task_name, comment_id)
 
 
 @router.get("/bills/{bill_id}/comments", response_model=list[CommentOut])
@@ -48,7 +54,9 @@ async def list_comments(bill_id: uuid.UUID, db: DB, user: CurrentUser, sort: Lit
 
 
 @router.post("/bills/{bill_id}/comments", response_model=CommentOut, status_code=status.HTTP_201_CREATED)
-async def create_comment(bill_id: uuid.UUID, body: CommentIn, db: DB, redis: RedisDep, user: CurrentUser):
+async def create_comment(
+    bill_id: uuid.UUID, body: CommentIn, db: DB, redis: RedisDep, user: CurrentUser, background: BackgroundTasks
+):
     bill = await _published_bill(db, bill_id)
 
     min_age = timedelta(minutes=settings.comment_min_account_age_minutes)
@@ -79,8 +87,8 @@ async def create_comment(bill_id: uuid.UUID, body: CommentIn, db: DB, redis: Red
     await db.commit()
     await db.refresh(comment, ["user"])
 
-    _enqueue("moderate_comment", comment.id)
-    _enqueue("notify_followers_of_comment", comment.id)
+    _enqueue(background, "moderate_comment", comment.id)
+    _enqueue(background, "notify_followers_of_comment", comment.id)
     return (await comments_out(db, user, [comment]))[0]
 
 

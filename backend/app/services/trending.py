@@ -34,7 +34,10 @@ async def recalculate(db: AsyncSession) -> dict:
         bill_id: (comments.get(bill_id, 0) * 3.0 + (votes.get(bill_id) or 0) * 1.0) / active_users
         for bill_id in set(comments) | set(votes)
     }
-    trending_ids = {bid for bid, s in scores.items() if s > settings.trending_threshold}
+    # At most a handful at once: with a small user base nearly every bill someone touched cleared the
+    # threshold, and a badge on every card means nothing.
+    above = sorted((bid for bid, s in scores.items() if s > settings.trending_threshold), key=scores.get, reverse=True)
+    trending_ids = set(above[: settings.trending_max_bills])
     previously = set(await db.scalars(select(Bill.id).where(Bill.is_trending.is_(True))))
 
     await db.execute(

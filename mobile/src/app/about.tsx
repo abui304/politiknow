@@ -18,7 +18,12 @@ const POINTS: { icon: IconName; title: string; body: string }[] = [
   {
     icon: 'lock',
     title: 'We don’t sell your data',
-    body: 'There are no ads and no data brokers. Your email is used to sign you in and nothing else.',
+    body: 'There are no ads and no data brokers. Your email is used to sign you in and, only if you turn it on, to send the weekly recap. Every recap email has a one-click unsubscribe and no tracking.',
+  },
+  {
+    icon: 'bar-chart-2',
+    title: 'What we measure, and what we don’t',
+    body: 'To see whether the app is useful, we record which days you used it, when you opened an alert, and a few named actions such as opening the weekly recap. No search terms, no browsing history, no device or network details, and no outside analytics. Raw records are deleted after 13 months, and all of it is deleted with your account.',
   },
   {
     icon: 'trash-2',
@@ -34,6 +39,16 @@ const POINTS: { icon: IconName; title: string; body: string }[] = [
     icon: 'cpu',
     title: 'Summaries are written by AI',
     body: 'An AI writes the plain-English summaries from the bill’s text, told to describe what a bill does without taking sides. They can contain mistakes, so each one has a “Report a summary mistake” button.',
+  },
+  {
+    icon: 'check-square',
+    title: 'Votes are the official record',
+    body: 'How members voted comes from the House and Senate clerks, shown word for word: the question as they wrote it, the result, and each vote. Parties are always listed in the same order, and missed votes are shown with the total and a reminder that absences have many causes.',
+  },
+  {
+    icon: 'book-open',
+    title: 'How the weekly recap is picked',
+    body: 'The same rules for everyone, in this order: bills you follow that moved, how your members voted on final passage and cloture, bills that passed the House or Senate or became law (most-followed first), and what’s on the floor. Nothing in it is chosen or written by AI.',
   },
   {
     icon: 'columns',

@@ -7,8 +7,8 @@ const ACCESS = 'pk.access';
 const REFRESH = 'pk.refresh';
 const STAGE = 'pk.stage';
 
-/** Where the user is in sign-up: picking a display name, picking topics, or done. */
-export type Stage = 'needs_name' | 'needs_topics' | 'ready';
+/** Where the user is in sign-up: picking a display name, picking topics, finding their members of Congress, or done. */
+export type Stage = 'needs_name' | 'needs_topics' | 'needs_place' | 'ready';
 
 type AuthState = {
   hydrated: boolean;

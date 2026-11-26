@@ -3,9 +3,11 @@ import { View } from 'react-native';
 
 import { FollowingCard, MyMapCard, RepresentativesCard } from '@/components/MyPlaces';
 import { ProfileView } from '@/components/ProfileView';
-import { Button, Card, Chip, Loading, Screen, Txt } from '@/components/ui';
+import { MyMembersVotes } from '@/components/Votes';
+import { Button, Card, Loading, Screen, Txt } from '@/components/ui';
 import { useMe } from '@/lib/queries';
 import { space, type } from '@/theme';
+import { TopicChip } from '@/components/TopicIcon';
 
 export default function MyProfile() {
   const { data: me, isLoading } = useMe();
@@ -23,6 +25,7 @@ export default function MyProfile() {
         extra={
           <>
             <RepresentativesCard />
+            <MyMembersVotes />
             <MyMapCard />
             <FollowingCard />
             <Card style={{ gap: space.md }}>
@@ -30,7 +33,7 @@ export default function MyProfile() {
               {me.onboarding_tags.length ? (
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
                   {me.onboarding_tags.map((t) => (
-                    <Chip key={t} label={t} small />
+                    <TopicChip key={t} label={t} small />
                   ))}
                 </View>
               ) : (

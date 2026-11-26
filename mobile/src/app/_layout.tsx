@@ -160,6 +160,9 @@ export default function RootLayout() {
               <Stack.Protected guard={signedIn && stage === 'needs_topics'}>
                 <Stack.Screen name="onboarding/topics" />
               </Stack.Protected>
+              <Stack.Protected guard={signedIn && stage === 'needs_place'}>
+                <Stack.Screen name="onboarding/place" />
+              </Stack.Protected>
               <Stack.Protected guard={signedIn && stage === 'ready'}>
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="bill/[id]" />
@@ -168,6 +171,7 @@ export default function RootLayout() {
                 <Stack.Screen name="user/[id]" />
                 <Stack.Screen name="settings" />
                 <Stack.Screen name="calendar" />
+                <Stack.Screen name="digest" />
                 <Stack.Screen name="state/[code]" />
                 <Stack.Screen name="state-map/[code]" />
                 <Stack.Screen name="map" />

@@ -5,7 +5,8 @@ import { useTags } from '@/lib/queries';
 import { topicsFor } from '@/lib/topics';
 import { colors, fonts, radius, space, type } from '@/theme';
 
-import { Chip, Loading, Txt } from './ui';
+import { Loading, Txt } from './ui';
+import { TopicChip } from './TopicIcon';
 
 export function TopicPicker({ selected, onChange, max = 10 }: { selected: string[]; onChange: (tags: string[]) => void; max?: number }) {
   const { data: tags, isLoading } = useTags();
@@ -52,7 +53,7 @@ export function TopicPicker({ selected, onChange, max = 10 }: { selected: string
       ) : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
         {shown.map((t) => (
-          <Chip key={t.name} label={t.name} selected={selected.includes(t.name)} onPress={() => toggle(t.name)} />
+          <TopicChip key={t.name} label={t.name} selected={selected.includes(t.name)} onPress={() => toggle(t.name)} />
         ))}
       </View>
       {term && shown.length === selected.length ? (

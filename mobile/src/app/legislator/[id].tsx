@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { ActivityIndicator, FlatList, Linking, StyleSheet, Text, View } from 'react-native';
 
 import { BillCard, PartyBadge } from '@/components/BillCard';
+import { ContactSheet } from '@/components/ContactMembers';
+import { LegislatorVotes } from '@/components/Votes';
 import { DistrictMap } from '@/components/DistrictMap';
 import { LegislatorPhoto } from '@/components/LegislatorPhoto';
 import { Button, Card, Chip, Empty, Icon, type IconName, Screen, Segmented, Skeleton, SkeletonList, Tap, TopBar, Txt } from '@/components/ui';
@@ -18,9 +20,10 @@ const ROLES: { key: LegislatorRole; label: string }[] = [
   { key: 'cosponsored', label: 'Cosponsored' },
 ];
 
-type Tab = 'bills' | 'district' | 'about';
+type Tab = 'bills' | 'votes' | 'district' | 'about';
 const TABS: { key: Tab; label: string }[] = [
   { key: 'bills', label: 'Bills' },
+  { key: 'votes', label: 'Votes' },
   { key: 'district', label: 'District' },
   { key: 'about', label: 'About' },
 ];
@@ -73,7 +76,10 @@ export default function LegislatorPage() {
                   </View>
                   <Text style={[styles.heroName, { color: p.on }]}>{legislator.name}</Text>
                   <Text style={[styles.heroMeta, { color: onAlpha(p, 0.8) }]}>{legislatorPlace(legislator)}</Text>
-                  <FollowButton legislator={legislator} />
+                  <View style={{ flexDirection: 'row', gap: space.sm, flexWrap: 'wrap' }}>
+                    <FollowButton legislator={legislator} />
+                    <ContactPill legislator={legislator} />
+                  </View>
                 </View>
               </View>
               <View style={[styles.stats, { borderTopColor: onAlpha(p, 0.25) }]}>
@@ -96,6 +102,7 @@ export default function LegislatorPage() {
                 ))}
               </View>
             ) : null}
+            {tab === 'votes' ? <LegislatorVotes id={legislator.bioguide_id} name={legislator.name} /> : null}
             {tab === 'district' ? <AreaCard legislator={legislator} /> : null}
             {tab === 'about' ? <AboutCard legislator={legislator} onShowBills={() => setTab('bills')} /> : null}
           </View>
@@ -132,6 +139,26 @@ export default function LegislatorPage() {
         ListFooterComponent={tab === 'bills' && bills.isFetchingNextPage ? <ActivityIndicator color={colors.inkSoft} /> : null}
       />
     </Screen>
+  );
+}
+
+/** Their office phone and a short, neutral guide to calling. Hidden when there's no phone on file. */
+function ContactPill({ legislator: l }: { legislator: Legislator }) {
+  const [open, setOpen] = useState(false);
+  const p = partyColors(l.party);
+  if (!l.phone) return null;
+  return (
+    <>
+      <Tap
+        onPress={() => setOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel={`Contact ${l.name}'s office`}
+        style={[styles.follow, { borderColor: onAlpha(p, 0.5) }]}>
+        <Icon name="phone" size={14} color={p.on} />
+        <Text style={[styles.followText, { color: p.on }]}>Contact</Text>
+      </Tap>
+      <ContactSheet visible={open} onClose={() => setOpen(false)} members={[l]} />
+    </>
   );
 }
 

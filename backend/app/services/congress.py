@@ -125,6 +125,49 @@ class CongressClient:
                     return version.get("type") or "", _squash_blank_lines(text)
         return None
 
+    # Recorded votes. House: Congress.gov's house-vote endpoints. The Senate has no Congress.gov endpoint, so
+    # its votes come from senate.gov's public XML files (services/votes.py).
+
+    async def house_votes(self, congress: int, session: int, limit: int = 250) -> list[dict]:
+        """The session's House roll calls (list level: number, date, result, legislation; no question)."""
+        votes: list[dict] = []
+        while True:
+            data = await self._get(f"{BASE}/house-vote/{congress}/{session}", {"offset": len(votes), "limit": 250})
+            page = data.get("houseRollCallVotes") or _first_list(data)
+            votes.extend(page)
+            total = data.get("pagination", {}).get("count", 0)
+            if not page or len(votes) >= total or len(votes) >= limit:
+                return votes
+
+    async def house_vote(self, congress: int, session: int, number: int) -> dict:
+        data = await self._get(f"{BASE}/house-vote/{congress}/{session}/{number}")
+        return data.get("houseRollCallVote") or _first_dict(data)
+
+    async def house_vote_members(self, congress: int, session: int, number: int) -> list[dict]:
+        results: list[dict] = []
+        while True:
+            data = await self._get(
+                f"{BASE}/house-vote/{congress}/{session}/{number}/members", {"offset": len(results), "limit": 250}
+            )
+            body = data.get("houseRollCallVoteMemberVotes") or _first_dict(data)
+            page = body.get("results") or []
+            results.extend(page)
+            total = data.get("pagination", {}).get("count", 0)
+            if not page or len(results) >= total or len(page) < 250:
+                return results
+
+    async def related_bills(self, congress: int, bill_type: str, number: int) -> list[dict]:
+        data = await self._get(
+            f"{BASE}/bill/{congress}/{bill_type.lower()}/{number}/relatedbills", {"limit": 50}
+        )
+        return data.get("relatedBills") or []
+
+    async def senate_xml(self, url: str) -> str:
+        resp = await self.http.get(url, headers={"User-Agent": SENATE_USER_AGENT}, follow_redirects=True)
+        resp.raise_for_status()
+        return resp.text
+
+
 
 def _squash_blank_lines(text: str) -> str:
     lines = [line.rstrip() for line in text.splitlines()]
@@ -133,3 +176,14 @@ def _squash_blank_lines(text: str) -> str:
         if line or (out and out[-1]):
             out.append(line)
     return "\n".join(out).strip()
+
+
+SENATE_USER_AGENT = "PolitiKNOW/1.0 (nonpartisan civic app; roll-call vote reader)"
+
+
+def _first_list(data: dict) -> list:
+    return next((v for k, v in data.items() if isinstance(v, list) and k != "pagination"), [])
+
+
+def _first_dict(data: dict) -> dict:
+    return next((v for k, v in data.items() if isinstance(v, dict) and k not in ("pagination", "request")), {})

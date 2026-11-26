@@ -3,6 +3,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
+import { SteamCup } from '@/components/SteamCup';
 import { Button, Card, DocketTag, Empty, Icon, Loading, Screen, Tap, TopBar, Txt } from '@/components/ui';
 import { calendarDate } from '@/lib/format';
 import { useCalendar } from '@/lib/queries';
@@ -91,7 +92,7 @@ function Chamber({
       ) : (
         <Card style={{ gap: space.md }}>
           <View style={{ flexDirection: 'row', gap: space.md, alignItems: 'center' }}>
-            <Icon name="coffee" size={18} color={colors.inkSoft} />
+            <SteamCup size={20} />
             <Txt style={[type.small, { flex: 1 }]}>{empty}</Txt>
           </View>
           <Button

@@ -5,12 +5,14 @@ import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { Button, Card, Empty, Icon, type IconName, Screen, SkeletonList, Tap, Title, Txt } from '@/components/ui';
 import { api } from '@/lib/api';
-import { timeAgo } from '@/lib/format';
+import { markAlertOpened } from '@/lib/events';
+import { shortDate, timeAgo } from '@/lib/format';
 import { keys, useNotifications } from '@/lib/queries';
 import type { AppNotification, NotificationType } from '@/lib/types';
-import { colors, radius, space, type } from '@/theme';
+import { colors, outline, radius, space, type } from '@/theme';
 
 const ICONS: Record<NotificationType, IconName> = {
+  member_vote: 'check-square',
   new_bill: 'file-text',
   status_update: 'activity',
   trending: 'trending-up',
@@ -43,7 +45,19 @@ export default function Notifications() {
         keyExtractor={(n) => n.id}
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.inkSoft} />}
-        ListHeaderComponent={<Title style={{ paddingTop: space.md, paddingBottom: space.lg }}>Alerts</Title>}
+        ListHeaderComponent={
+          <View style={{ paddingTop: space.md, paddingBottom: space.lg, gap: space.md }}>
+            <Title>Alerts</Title>
+            <Tap onPress={() => router.push('/digest')} accessibilityRole="link" style={styles.recap}>
+              <Icon name="book-open" size={18} color={colors.inkSoft} />
+              <View style={{ flex: 1 }}>
+                <Txt style={type.bodyMedium}>Your week in Congress</Txt>
+                <Txt style={type.small}>What moved, how your members voted, and what passed</Txt>
+              </View>
+              <Icon name="chevron-right" size={16} color={colors.muted} />
+            </Tap>
+          </View>
+        }
         ListEmptyComponent={
           isLoading ? (
             <SkeletonList kind="row" count={4} />
@@ -51,8 +65,8 @@ export default function Notifications() {
             <Empty
               icon="bell"
               title="No alerts yet"
-              body="Alerts show up here when a bill you follow moves, when there’s news on your topics, or when people you follow comment."
-              action={<Button title="Choose what to get alerts about" small variant="secondary" onPress={() => router.push({ pathname: '/settings', params: { section: 'alerts' } })} />}
+              body="Follow a bill and you’ll see its recent activity here right away, then an alert each time it moves. A good place to start is what’s on the floor this week."
+              action={<Button title="See this week on the floor" small variant="secondary" icon="calendar" onPress={() => router.push('/calendar')} />}
             />
           )
         }
@@ -60,7 +74,10 @@ export default function Notifications() {
           const icon = ICONS[item.type] ?? ICONS.new_bill;
           return (
             <Tap
-              onPress={() => item.bill_id && router.push({ pathname: '/bill/[id]', params: { id: item.bill_id } })}
+              onPress={() => {
+                markAlertOpened(item.id);
+                if (item.bill_id) router.push({ pathname: '/bill/[id]', params: { id: item.bill_id } });
+              }}
               accessibilityLabel={`${item.is_read ? '' : 'Unread. '}${item.title}`}
               style={{ marginBottom: space.sm }}>
               <Card style={styles.row}>
@@ -72,7 +89,9 @@ export default function Notifications() {
                   <Txt style={type.small} numberOfLines={2}>
                     {item.body}
                   </Txt>
-                  <Txt style={type.meta}>{timeAgo(item.created_at)}</Txt>
+                  <Txt style={type.meta}>
+                    {item.backfill ? `Before you followed · ${shortDate(item.created_at)}` : timeAgo(item.created_at)}
+                  </Txt>
                 </View>
                 {!item.is_read ? <View style={styles.dot} /> : null}
               </Card>
@@ -85,6 +104,7 @@ export default function Notifications() {
 }
 
 const styles = StyleSheet.create({
+  recap: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, backgroundColor: colors.surface, ...outline(radius.md) },
   list: { paddingHorizontal: space.lg, paddingBottom: space.xxl, width: '100%', maxWidth: 520, alignSelf: 'center' },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md, padding: space.md },
   icon: { width: 36, height: 36, borderRadius: radius.sm, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt },

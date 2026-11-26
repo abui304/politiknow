@@ -130,3 +130,39 @@ async def test_stale_lock_is_taken_over_and_released(db):
     result = await run_ingestion(db, FakeCongress())
     assert "skipped" not in result
     assert await db.get(IngestState, RUNNING_SINCE) is None
+
+
+async def test_ingest_keeps_cost_estimates_and_official_related_bills(client, db):
+    from tests.conftest import signup
+
+    api = FakeCongress()
+    orig = api.bill_detail
+
+    async def detail(congress, bill_type, number):
+        d = await orig(congress, bill_type, number)
+        d["cboCostEstimates"] = [{"pubDate": "2026-09-10T12:00:00Z", "title": "H.R. 1, Insulin Act",
+                                  "url": "https://www.cbo.gov/publication/1", "description": "As ordered reported"}]
+        d["relatedBills"] = {"count": 2}
+        return d
+
+    async def related(congress, bill_type, number):
+        return [
+            {"congress": 118, "type": "HR", "number": 77, "title": "Earlier Insulin Act",
+             "relationshipDetails": [{"type": "Related bill", "identifiedBy": "CRS"}],
+             "latestAction": {"text": "Referred to committee."}},
+            {"congress": 119, "type": "S", "number": 2, "title": "Bill 2",
+             "relationshipDetails": [{"type": "Identical bill", "identifiedBy": "CRS"}]},
+        ]
+
+    api.bill_detail = detail
+    api.related_bills = related
+    await run_ingestion(db, api)
+    bill = await db.scalar(select(Bill).where(Bill.bill_number == 1))
+    h = await signup(client, "reader")
+    out = (await client.get(f"/bills/{bill.id}/record", headers=h)).json()
+    assert out["cbo_estimates"][0]["url"] == "https://www.cbo.gov/publication/1"
+    assert out["cbo_estimates"][0]["date"] == "2026-09-10"
+    labels = [r["label"] for r in out["related"]]
+    assert labels == ["S. 2", "H.R. 77"]  # identical companion first
+    assert out["related"][1]["url"] == "https://www.congress.gov/bill/118th-congress/house-bill/77"
+    assert out["related"][1]["relationships"] == ["Related bill"] and out["related"][1]["bill_id"] is None

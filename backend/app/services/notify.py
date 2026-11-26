@@ -11,6 +11,7 @@ from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import explain
 from app.config import settings
 from app.models import Bill, BillFollow, Comment, Follow, Legislator, LegislatorFollow, Notification, User, Vote
 from app.schemas import NotificationPrefs
@@ -43,7 +44,9 @@ def in_quiet_hours(user: User, now: datetime | None = None) -> bool:
 async def _sent_today(db: AsyncSession, user_id: uuid.UUID) -> int:
     since = datetime.now(UTC) - timedelta(days=1)
     return await db.scalar(
-        select(func.count()).where(Notification.user_id == user_id, Notification.created_at >= since)
+        select(func.count()).where(
+            Notification.user_id == user_id, Notification.created_at >= since, Notification.backfill.is_(False)
+        )
     ) or 0
 
 
@@ -57,11 +60,13 @@ async def notify(
             continue
         if await _sent_today(db, user.id) >= settings.notifications_per_day:
             continue
-        db.add(Notification(user_id=user.id, type=ntype, title=title, body=body, bill_id=bill_id))
+        nid = uuid.uuid4()
+        db.add(Notification(id=nid, user_id=user.id, type=ntype, title=title, body=body, bill_id=bill_id))
         if user.push_token and not in_quiet_hours(user):
             pushes.append({
                 "to": user.push_token, "title": title, "body": body, "sound": "default",
-                "data": {"bill_id": str(bill_id) if bill_id else None},
+                # The id lets the app record that this alert was opened from a push.
+                "data": {"bill_id": str(bill_id) if bill_id else None, "notification_id": str(nid)},
             })
     return pushes
 
@@ -115,9 +120,51 @@ async def notify_new_bill(db: AsyncSession, bill: Bill) -> list[dict]:
 
 
 async def notify_status_change(db: AsyncSession, bill: Bill) -> list[dict]:
+    """"H.R. 1148 passed the House" with what that means and what comes next, then the official action."""
     users = await users_following_bill(db, bill.id)
-    body = bill.latest_action_text or bill.status
-    return await notify(db, users, "status_update", f"Update on {bill.label}", body, bill.id)
+    title = f"{bill.label}: {explain.stage_label(bill.bill_type, bill.status)}"
+    body = explain.stage_line(bill.bill_type, bill.status)
+    if bill.latest_action_text:
+        body = f"{body} Latest action: {bill.latest_action_text}" if body else bill.latest_action_text
+    return await notify(db, users, "status_update", title, body, bill.id)
+
+
+BACKFILL_DAYS = 30
+
+
+async def backfill_for_follow(db: AsyncSession, user: User, bill: Bill) -> int:
+    """Fills Alerts with what a newly followed bill did in the last 30 days, so a first follow isn't met
+    by an empty Alerts tab. Marked as earlier activity and already read: no badge, no push, and it doesn't
+    count against the daily alert limit. Skipped when the person already has alerts about this bill."""
+    has_any = await db.scalar(
+        select(func.count()).where(Notification.user_id == user.id, Notification.bill_id == bill.id)
+    )
+    if has_any:
+        return 0
+    since = (datetime.now(UTC) - timedelta(days=BACKFILL_DAYS)).date().isoformat()
+    reached = {"introduced": bill.introduced_date.isoformat()} if bill.introduced_date else {}
+    reached |= bill.milestones or {}
+    recent = sorted((day, stage) for stage, day in reached.items() if day and day >= since)[-3:]
+    added = 0
+    for day, stage in recent:
+        when = datetime.fromisoformat(day).replace(hour=12, tzinfo=UTC)
+        db.add(Notification(
+            user_id=user.id, type="status_update", bill_id=bill.id, backfill=True, is_read=True, created_at=when,
+            title=f"{bill.label}: {explain.stage_label(bill.bill_type, stage)}",
+            body=explain.stage_line(bill.bill_type, stage),
+        ))
+        added += 1
+    if not added:
+        # Nothing in the last month: one line on where it stands, so the follow still shows up.
+        db.add(Notification(
+            user_id=user.id, type="status_update", bill_id=bill.id, backfill=True, is_read=True,
+            title=f"Following {bill.label}",
+            body=f"You'll get an alert here when it moves. Where it stands: "
+            f"{explain.stage_label(bill.bill_type, bill.status).lower()}."
+            + (f" Latest action: {bill.latest_action_text}" if bill.latest_action_text else ""),
+        ))
+        added = 1
+    return added
 
 
 async def notify_trending(db: AsyncSession, bill: Bill) -> list[dict]:
@@ -162,4 +209,61 @@ async def notify_legislator_bill(
         verb = "sponsored" if member == sponsor_id else "cosponsored"
         title = f"{names.get(member, 'A legislator you follow')} {verb} a bill"
         pushes += await notify(db, users, "legislator", title, f"{bill.label} - {bill.title}", bill.id)
+    return pushes
+
+
+# Votes worth an alert: final passage and cloture (whether debate ends). Amendments and procedural motions
+# are on the bill page, not pushed.
+ALERT_VOTE_KINDS = ("passage", "cloture")
+
+
+async def members_of(db: AsyncSession, user: User) -> set[str]:
+    """The user's own members of Congress (home district's representative and home state's senators, serving
+    now) plus anyone they follow. Bioguide IDs."""
+    ids: set[str] = set(await db.scalars(
+        select(LegislatorFollow.bioguide_id).where(LegislatorFollow.user_id == user.id)
+    ))
+    if user.home_state:
+        home = select(Legislator.bioguide_id).where(
+            Legislator.in_office.is_(True),
+            Legislator.state == user.home_state,
+            or_(
+                Legislator.chamber == "senate",
+                (Legislator.chamber == "house") & (Legislator.district == user.home_district),
+            ),
+        )
+        ids |= set(await db.scalars(home))
+    return ids
+
+
+async def notify_member_votes(db: AsyncSession, roll_calls: list) -> list[dict]:
+    """"How your members voted on H.R. 1148": for people following a bill, after a passage or cloture vote,
+    listing each of their own members' votes. Only recent votes, so a backfill of old votes stays quiet."""
+    from app.models import MemberVote
+
+    pushes: list[dict] = []
+    recent = datetime.now(UTC) - timedelta(days=7)
+    for rc in roll_calls:
+        if not rc.bill_id or rc.kind not in ALERT_VOTE_KINDS or rc.voted_at < recent:
+            continue
+        bill = await db.get(Bill, rc.bill_id)
+        if not bill:
+            continue
+        votes = {
+            bid: (name, party, pos)
+            for bid, name, party, pos in await db.execute(
+                select(MemberVote.bioguide_id, Legislator.last_name, Legislator.party, MemberVote.position)
+                .join(Legislator, Legislator.bioguide_id == MemberVote.bioguide_id)
+                .where(MemberVote.roll_call_id == rc.id)
+            )
+        }
+        chamber = "House" if rc.chamber == "house" else "Senate"
+        tally = f"{rc.result}, {rc.yea}–{rc.nay}" if rc.result else f"{rc.yea}–{rc.nay}"
+        for user in await users_following_bill(db, bill.id):
+            mine = sorted(votes[b] for b in await members_of(db, user) if b in votes)
+            if not mine:
+                continue
+            who = " · ".join(f"{name} ({(party or '?')[:1]}) {pos}" for name, party, pos in mine)
+            body = f"{chamber}, {rc.question}: {who}. Result: {tally}."
+            pushes += await notify(db, [user], "member_vote", f"How your members voted on {bill.label}", body, bill.id)
     return pushes

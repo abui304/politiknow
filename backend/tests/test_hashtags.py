@@ -49,12 +49,29 @@ async def test_popular_hashtags_only_lists_shared_ones(client, db):
 async def test_tagger_is_offered_existing_hashtags(monkeypatch):
     seen = {}
 
-    async def fake_chat(system, user, json_mode=False):
+    async def fake_chat(system, user, json_mode=False, task=None):
         seen["system"] = system
+        seen["task"] = task
         return '{"primary_tags": ["Health"], "sub_tags": ["insulin pricing", "Medicare"]}'
 
     monkeypatch.setattr(llm, "_chat", fake_chat)
     monkeypatch.setattr(llm, "_client", lambda: object())
     tags = await llm.generate_tags("T", "text", None, ["Insulin pricing", "Texas"])
-    assert "Insulin pricing, Texas" in seen["system"]
+    assert "Insulin pricing, Texas" in seen["task"]
+    assert seen["system"] == llm.SHARED_SYSTEM  # same prefix as the summaries, so the bill text is cached
     assert hashtags.canonicalize(tags.sub, {"insulin pricing": "Insulin pricing"}) == ["Insulin pricing", "Medicare"]
+
+
+async def test_summaries_and_tags_share_a_cacheable_prefix(monkeypatch):
+    calls = []
+
+    async def fake_chat(system, user, json_mode=False, task=None):
+        calls.append((system, user, task))
+        return '{"primary_tags": [], "sub_tags": []}' if json_mode else "summary"
+
+    monkeypatch.setattr(llm, "_chat", fake_chat)
+    monkeypatch.setattr(llm, "_client", lambda: object())
+    await llm.summarize("T", "bill text")
+    await llm.generate_tags("T", "bill text", None)
+    assert len({(system, user) for system, user, _ in calls}) == 1  # identical system + bill text
+    assert len({task for *_, task in calls}) == 3  # only the final task differs

@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Link } from 'expo-router';
 import { Platform, StyleSheet, Text, View } from 'react-native';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 
 import { plainText, shortDate, truncate } from '@/lib/format';
@@ -13,7 +13,8 @@ import type { Bill } from '@/lib/types';
 import { colors, figures, fonts, motion, onAlpha, outline, partyColors, radius, space, spring, type } from '@/theme';
 
 import { BillTimeline } from './BillTimeline';
-import { Chip, CountRoll, Icon, Tap, Txt } from './ui';
+import { CountRoll, Icon, Tap, Txt } from './ui';
+import { TopicChip } from './TopicIcon';
 
 /** On iOS 18+, the card's colored header zooms into the bill page's header when the card is opened.
  *  Elsewhere the normal page transition runs. */
@@ -68,16 +69,20 @@ function VoteArrow({ dir, on, bill, onPress }: { dir: 1 | -1; on: boolean; bill:
 /** Up and down votes on a party-colored bar. The chosen arrow sits in a filled circle; the score rolls to its new value. */
 export function VoteControl({ bill }: { bill: Bill }) {
   const vote = useVoteBill();
+  // The score rolls only after a vote here, never when the card first shows or refreshes.
+  const [voted, setVoted] = useState(false);
   const p = partyColors(bill.sponsor_party);
-  const cast = (v: -1 | 1) =>
+  const cast = (v: -1 | 1) => {
+    setVoted(true);
     vote.mutate(
       { id: bill.id, value: bill.my_vote === v ? 0 : v, before: { net_score: bill.net_score, my_vote: bill.my_vote } },
       { onError: toastError },
     );
+  };
   return (
     <View style={styles.vote} accessibilityLabel={`Score ${bill.net_score}`}>
       <VoteArrow dir={1} on={bill.my_vote === 1} bill={bill} onPress={() => cast(1)} />
-      <CountRoll value={bill.net_score} style={[styles.score, { color: p.on }]} />
+      <CountRoll value={bill.net_score} live={voted} style={[styles.score, { color: p.on }]} />
       <VoteArrow dir={-1} on={bill.my_vote === -1} bill={bill} onPress={() => cast(-1)} />
     </View>
   );
@@ -199,7 +204,7 @@ export function BillCard({ bill }: { bill: Bill }) {
           {bill.primary_tags.length ? (
             <View style={styles.tags}>
               {bill.primary_tags.map((t) => (
-                <Chip key={t} label={t} small />
+                <TopicChip key={t} label={t} small />
               ))}
             </View>
           ) : null}
@@ -212,7 +217,7 @@ export function BillCard({ bill }: { bill: Bill }) {
         <Link href={href} asChild>
           <Tap onPressIn={prefetch} style={styles.footerBtn} accessibilityRole="link" accessibilityLabel={`Read ${bill.comment_count} ${bill.comment_count === 1 ? 'comment' : 'comments'}`}>
             <Icon name="message-circle" size={16} color={p.on} />
-            <CountRoll value={bill.comment_count} style={[styles.footerText, styles.count, { color: p.on }]} />
+            <Text style={[styles.footerText, styles.count, { color: p.on }]}>{bill.comment_count}</Text>
           </Tap>
         </Link>
         <FollowBillButton bill={bill} />

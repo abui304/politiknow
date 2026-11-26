@@ -1,13 +1,15 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from redis.asyncio import Redis
+from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
-from app.models import User
+from app.models import ActivityDay, User
 from app.redis_client import get_redis
 from app.security import decode_access_token
 
@@ -17,9 +19,13 @@ DB = Annotated[AsyncSession, Depends(get_db)]
 RedisDep = Annotated[Redis, Depends(get_redis)]
 
 ACTIVE_TOUCH_SECONDS = 600
+# A gap this long between requests starts a new visit: "since your last visit" then counts from the old one.
+VISIT_GAP = timedelta(hours=1)
+PLATFORMS = {"ios", "android", "web"}
 
 
 async def get_user_allow_incomplete(
+    request: Request,
     db: DB,
     redis: RedisDep,
     creds: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
@@ -33,9 +39,24 @@ async def get_user_allow_incomplete(
     # "Active users" for trending = opened the app in the last 7 days (spec 5.2).
     # Throttled so every request doesn't write to the users table.
     if await redis.set(f"active:{user.id}", "1", ex=ACTIVE_TOUCH_SECONDS, nx=True):
-        user.last_active_at = datetime.now(UTC)
-        await db.commit()
+        await record_activity(db, user, request.headers.get("x-client"))
     return user
+
+
+async def record_activity(db: AsyncSession, user: User, client: str | None) -> None:
+    """Marks today as an active day (for retention by cohort) and, after a long enough gap, starts a new
+    visit so "since your last visit" has a fixed point to compare against."""
+    now = datetime.now(UTC)
+    if user.last_active_at and now - user.last_active_at > VISIT_GAP:
+        user.previous_visit_at = user.last_active_at
+    user.last_active_at = now
+    platform = client if client in PLATFORMS else None
+    stmt = insert(ActivityDay).values(user_id=user.id, day=now.date(), platform=platform)
+    await db.execute(stmt.on_conflict_do_update(
+        index_elements=[ActivityDay.user_id, ActivityDay.day],
+        set_={"platform": func.coalesce(ActivityDay.platform, stmt.excluded.platform)},
+    ))
+    await db.commit()
 
 
 async def get_current_user(user: Annotated[User, Depends(get_user_allow_incomplete)]) -> User:

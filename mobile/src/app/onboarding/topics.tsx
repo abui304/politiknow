@@ -18,7 +18,7 @@ export default function PickTopics() {
   const n = selected.length;
 
   const save = (tags: string[]) =>
-    update.mutate({ onboarding_tags: tags }, { onSuccess: () => setStage('ready'), onError: toastError });
+    update.mutate({ onboarding_tags: tags }, { onSuccess: () => setStage('needs_place'), onError: toastError });
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>

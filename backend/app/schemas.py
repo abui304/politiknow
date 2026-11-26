@@ -53,8 +53,10 @@ class QuietHours(BaseModel):
 
 
 class NotificationPrefs(BaseModel):
-    types: dict[Literal["new_bill", "status_update", "trending", "social", "legislator"], bool] = {
-        "new_bill": True, "status_update": True, "trending": True, "social": True, "legislator": True,
+    # Trending alerts are opt-in: they're about what other people are doing, not about what you follow.
+    types: dict[Literal["new_bill", "status_update", "trending", "social", "legislator", "member_vote"], bool] = {
+        "new_bill": True, "status_update": True, "trending": False, "social": True, "legislator": True,
+        "member_vote": True,
     }
     tags: list[str] | None = None  # None = use the user's tag preferences
     quiet_hours: QuietHours | None = None
@@ -80,6 +82,8 @@ class MeOut(BaseModel):
     home_state: str | None
     home_district: int | None
     is_moderator: bool = False
+    # Opted in to the weekly recap email (off by default; needs an email address on the account).
+    recap_email: bool = False
     created_at: datetime
 
 
@@ -88,6 +92,7 @@ class MeUpdate(BaseModel):
     onboarding_tags: list[str] | None = None
     notification_preferences: NotificationPrefs | None = None
     push_token: str | None = Field(default=None, max_length=255)
+    recap_email: bool | None = None
 
     @field_validator("onboarding_tags")
     @classmethod
@@ -192,6 +197,7 @@ class LegislatorBase(BaseModel):
     chamber: str | None
     image_url: str | None
     image_blurhash: str | None = None
+    phone: str | None = None  # their Washington office, from Congress.gov
 
 
 class CareerSpan(BaseModel):
@@ -210,6 +216,131 @@ class LegislatorOut(LegislatorBase):
     phone: str | None
     sponsored_count: int  # published bills only
     cosponsored_count: int
+
+
+# ---------- the official record around a bill ----------
+
+class CostEstimate(BaseModel):
+    title: str | None
+    description: str | None  # e.g. "As ordered reported by the House Committee on ... on May 13, 2021"
+    url: str
+    date: date | None
+
+
+class OfficialRelated(BaseModel):
+    label: str  # "S. 1720"
+    congress: int | None
+    title: str | None
+    relationships: list[str]  # "Identical bill", "Related bill", "Procedurally-related" (official wording)
+    latest: str | None
+    bill_id: uuid.UUID | None  # set when the bill is in the app
+    url: str  # its Congress.gov page
+
+
+class BillRecordOut(BaseModel):
+    cbo_estimates: list[CostEstimate]
+    related: list[OfficialRelated]
+
+
+# ---------- recorded votes ----------
+
+class PartyTally(BaseModel):
+    yea: int = 0
+    nay: int = 0
+    present: int = 0
+    not_voting: int = 0
+
+
+class MemberPosition(LegislatorBase):
+    position: str  # Yea / Nay / Present / Not Voting
+    note: str  # "Your representative", "Your senator", "You follow"
+
+
+class RollCallOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    chamber: Literal["house", "senate"]
+    congress: int
+    session: int
+    number: int
+    voted_at: datetime
+    question: str  # official wording, never rewritten
+    kind: str
+    result: str
+    measure: str | None
+    bill_id: uuid.UUID | None = None  # set only when the bill is published in the app
+    yea: int
+    nay: int
+    present: int
+    not_voting: int
+    party_totals: dict[str, PartyTally]
+    source_url: str | None
+    your_members: list[MemberPosition] = []
+
+
+class MemberVoteOut(BaseModel):
+    """One of a member's votes, with what it was on."""
+
+    roll_call: RollCallOut
+    position: str
+    bill_id: uuid.UUID | None
+    bill_label: str | None
+    bill_title: str | None
+
+
+class MemberVotesPage(BaseModel):
+    items: list[MemberVoteOut]
+    next_cursor: int | None
+    # Missed votes this Congress, with the denominator, so a count is never shown without context.
+    missed: int
+    eligible: int
+
+
+class MyMembersVotesOut(BaseModel):
+    """Recent passage and cloture votes by the user's own members of Congress."""
+
+    items: list[RollCallOut]
+
+
+# ---------- since your last visit ----------
+
+class SinceItem(BaseModel):
+    kind: Literal["bills", "members", "topics"]
+    text: str  # "H.R. 1148 passed the House", "Your members voted on 2 bills"
+    bill_id: uuid.UUID | None = None  # opens this bill
+    tag: str | None = None  # opens search for this topic
+
+
+class SinceOut(BaseModel):
+    # Null for someone on their first visit: there's no "last visit" yet, so the strip is hidden.
+    since: datetime | None
+    items: list[SinceItem]
+
+
+# ---------- weekly recap ----------
+
+class DigestBill(BaseModel):
+    id: uuid.UUID
+    label: str
+    title: str
+    sponsor_party: str | None
+    what: str  # what happened this week, e.g. "Passed House"
+
+
+class DigestFloorItem(BaseModel):
+    chamber: Literal["house", "senate"]
+    label: str
+    bill_id: uuid.UUID | None
+
+
+class DigestOut(BaseModel):
+    week_start: date
+    followed: list[DigestBill]
+    votes: list[RollCallOut]
+    passed: list[DigestBill]
+    floor: list[DigestFloorItem]
+    is_empty: bool
 
 
 class FollowingOut(BaseModel):
@@ -331,6 +462,8 @@ class NotificationOut(BaseModel):
     body: str
     bill_id: uuid.UUID | None
     is_read: bool
+    # Earlier activity filled in when the bill was followed, shown under "Before you followed".
+    backfill: bool = False
     created_at: datetime
 
 

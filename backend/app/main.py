@@ -5,7 +5,20 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.idempotency import IdempotencyMiddleware
-from app.routers import auth, bills, calendar, comments, legislators, moderation, notifications, places, users
+from app.routers import (
+    auth,
+    bills,
+    calendar,
+    comments,
+    digest,
+    events,
+    legislators,
+    moderation,
+    notifications,
+    places,
+    users,
+    votes,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
@@ -23,7 +36,8 @@ app.add_middleware(
 
 for r in (
     auth.router, users.router, bills.router, legislators.router, places.router, comments.router,
-    notifications.router, calendar.router, moderation.router,
+    notifications.router, calendar.router, moderation.router, events.router, votes.router,
+    digest.router,
 ):
     app.include_router(r)
 
