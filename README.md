@@ -33,7 +33,7 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
   - **Follows:** bills you follow, and bills sponsored or cosponsored by legislators you follow.
 - **Why am I seeing this?** Each card says why it's there, e.g. "Because you follow Health" or "Sponsored by Kim Schrier, who you follow". It names the most personal reason that applies (something you follow, then your topics, then people you follow, then trending), and only says "Recent activity in Congress" when none do.
 - **For you / Most discussed** tabs. Most discussed ranks bills by comments in the last 7 days.
-- A **This week on the floor** link opens the floor calendar (see below).
+- A **Floor schedule** link opens the floor calendar (see below).
 - Each card is **colored by the sponsor's party** (blue Democrat, red Republican, yellow Independent) and shows the bill number, date, a **timeline** of its path through Congress (Intro, Committee, House, Senate, President, Law) with the date of each step reached, a short plain-English summary, topics, a Trending badge, votes, comment count, a **Follow** bell, and Share.
 - Pull down to refresh and re-rank.
 - **Opens instantly:** the last feed, bills and profile are saved on the device and shown at launch while fresh data loads (stale-while-revalidate). Bill pages open from the card's copy and start loading on press-in. Loading states are skeletons shaped like what's coming.
@@ -97,7 +97,7 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
 - "Who represents a district" comes from Congress.gov's list of current members, refreshed weekly by ingestion (also `sync-roster`), so it includes members who haven't sponsored anything yet.
 
 ### Floor calendar
-- **This week on the floor** (from the Feed): what the House and Senate plan to take up this week, with each bill linked to its PolitiKNOW page when the app has it.
+- **Floor schedule** (from the Feed; "Schedule" in the desktop sidebar): what the House and Senate plan to take up this week, with every bill linked: to its PolitiKNOW page when the app has it, otherwise to Congress.gov. Ingestion also pulls in scheduled bills the app doesn't have yet (`INGEST_FLOOR_BILLS`), so most open in the app.
 - House: the Majority Leader's weekly "Bills this Week" file from docs.house.gov, grouped by how bills will be considered (e.g. under suspension of the rules). Bills a rule brings to the floor are linked too. If this week's file isn't out, next week's is shown once published.
 - Senate: when it last met and when it meets next, from the floor schedule page on senate.gov, with any bill numbers it mentions linked. (The Senate doesn't publish an item-by-item list.)
 - Both sources are free and public, and are cached for an hour.
@@ -116,15 +116,16 @@ PolitiKNOW_Technical_Spec.docx   product + technical spec (v1.1)
 
 ### Since your last visit, and the weekly recap
 - **Since your last visit:** coming back after an hour or more, the top of the feed shows up to three lines on what changed for you: bills you follow that moved, votes by your members, and new bills on your topics. A quiet stretch gets one line ("You're caught up"); a first visit shows nothing.
-- **Your week in Congress** (Alerts tab, and the desktop sidebar): bills you follow that moved, how your members voted, what passed the House or Senate or became law, and what's on the floor. Picked by fixed rules, the same for everyone, with no AI, and it ends instead of scrolling forever.
+- **Weekly recap** (Alerts tab; "Recap" in the desktop sidebar): bills you follow that moved, how your members voted, what passed the House or Senate or became law, and scheduled votes on bills that are yours (followed, your topics, or sponsored by your members). The full schedule stays on the floor calendar, linked at the end. Picked by fixed rules, the same for everyone, with no AI, and it ends instead of scrolling forever.
 - **Weekly recap email** (opt-in in Settings or at the end of the recap): sent Saturday mornings through Brevo's free plan, with a one-click unsubscribe and no tracking pixels. Empty weeks aren't sent.
 
 ### Recorded votes
 - **How Congress voted** on each bill page: every House and Senate roll call, with the clerk's question word for word, the result, totals by party (grey bars, always in the same order), your own members' votes, and a link to the official record. Procedural votes and amendments are folded under passage and cloture, never hidden.
 - A **Votes** tab on every member's page, with missed votes shown as a count out of the total and a note that absences have many causes.
 - **How your members voted** on the Me tab.
-- Each bill page shows "From the official record": CBO cost estimates and the related bills Congress itself links (companions, identical bills, earlier versions). Both come from Congress.gov during ingestion.
+- Each bill page shows "From the official record": CBO cost estimates and the related bills Congress itself links (companions, identical bills, earlier versions). Both come from Congress.gov during ingestion. Every linked bill opens in the app: one PolitiKNOW doesn't have yet is fetched and summarized when someone first taps it (`POST /bills/{id}/record/open`, one OpenAI call, at most `OPEN_RELATED_PER_HOUR` per person). Bills from earlier Congresses never send alerts or count as new.
 - Members' office phone numbers power a "Contact" button on bill vote panels and member pages; it opens the phone dialer and never sends anything itself.
+- **Glossary** (`/glossary`): about 75 hand-written, neutral definitions in `mobile/src/lib/glossary.ts`. Terms in vote questions, floor-schedule headings, bill actions and the official-record section get a dotted underline (first use on each screen only); tapping one opens its meaning. Searching for a term shows its definition above the bill results.
 - House votes come from Congress.gov; Senate votes from senate.gov's public XML files. Both are fetched in every ingestion run (`cli sync-votes` does it by hand).
 - Push notifications are wired up through Expo's free push service, but only work in a real installed build on a phone (not on web, simulators, or Expo Go), and iOS push requires a paid Apple Developer account.
 

@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { StyleSheet, View } from 'react-native';
 
@@ -48,7 +49,7 @@ const POINTS: { icon: IconName; title: string; body: string }[] = [
   {
     icon: 'book-open',
     title: 'How the weekly recap is picked',
-    body: 'The same rules for everyone, in this order: bills you follow that moved, how your members voted on final passage and cloture, bills that passed the House or Senate or became law (most-followed first), and what’s on the floor. Nothing in it is chosen or written by AI.',
+    body: 'The same rules for everyone, in this order: bills you follow that moved, how your members voted on final passage and cloture, bills that passed the House or Senate or became law (most-followed first), and bills scheduled for a vote that you follow, are about your topics, or your members sponsored. Nothing in it is chosen or written by AI.',
   },
   {
     icon: 'columns',
@@ -76,14 +77,16 @@ export default function About() {
           </View>
         ))}
       </Card>
-      <Button
-        title="Visit Congress.gov"
-        icon="external-link"
-        variant="secondary"
-        hint="Opens the official congressional website in your browser"
-        onPress={() => WebBrowser.openBrowserAsync('https://www.congress.gov')}
-        style={{ marginTop: space.lg, alignSelf: 'flex-start' }}
-      />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.lg }}>
+        <Button
+          title="Visit Congress.gov"
+          icon="external-link"
+          variant="secondary"
+          hint="Opens the official congressional website in your browser"
+          onPress={() => WebBrowser.openBrowserAsync('https://www.congress.gov')}
+        />
+        <Button title="Glossary" icon="book" variant="secondary" onPress={() => router.push('/glossary')} />
+      </View>
     </Screen>
   );
 }

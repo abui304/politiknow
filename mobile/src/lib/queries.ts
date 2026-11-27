@@ -178,6 +178,17 @@ export const useBillCosponsors = (billId: string) =>
 export const useBillRecord = (id: string) =>
   useQuery({ queryKey: keys.billRecord(id), queryFn: () => api<BillRecord>(`/bills/${id}/record`), staleTime: 30 * 60_000 });
 
+/** Opens a bill Congress links to this one. If PolitiKNOW doesn't have it yet, the server fetches and summarizes
+ *  it first (a few seconds). Resolves to its id in the app. */
+export function useOpenRelated(fromId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (r: { congress: number; type: string; number: number }) =>
+      api<{ bill_id: string }>(`/bills/${fromId}/record/open`, { method: 'POST', body: r }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.billRecord(fromId) }),
+  });
+}
+
 /** Every recorded vote on a bill: passage first, procedural last, with the user's own members. */
 export const useBillVotes = (id: string) =>
   useQuery({ queryKey: keys.billVotes(id), queryFn: () => api<RollCall[]>(`/bills/${id}/votes`), staleTime: 5 * 60_000 });
@@ -195,7 +206,7 @@ export const useLegislatorVotes = (id: string) =>
 export const useSince = () =>
   useQuery({ queryKey: keys.since, queryFn: () => api<Since>('/users/me/since'), staleTime: 30 * 60_000 });
 
-/** This week's recap, "Your week in Congress". */
+/** This week's recap. */
 export const useDigest = () => useQuery({ queryKey: keys.digest, queryFn: () => api<Digest>('/digest') });
 
 /** Recent passage and cloture votes by the user's own members of Congress. */

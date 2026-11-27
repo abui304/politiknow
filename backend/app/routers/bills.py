@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -9,6 +11,7 @@ from sqlalchemy import ARRAY, Text, case, delete, exists, func, literal_column, 
 from app import search_terms
 from app.config import settings
 from app.deps import DB, CurrentUser, RedisDep
+from app.links import congress_gov_url
 from app.models import Bill, BillCosponsor, BillFollow, InteractionType, Legislator, SummaryReport, Vote, bill_label
 from app.ratelimit import enforce_hourly_limit
 from app.schemas import (
@@ -18,6 +21,8 @@ from app.schemas import (
     BillText,
     HashtagOut,
     OfficialRelated,
+    OpenRelatedIn,
+    OpenRelatedOut,
     StageOut,
     SummaryReportIn,
     TagOut,
@@ -26,10 +31,13 @@ from app.schemas import (
 )
 from app.serializers import bills_out
 from app.services import feed as feed_service
-from app.services import hashtags, interactions, notify
+from app.services import hashtags, ingest, interactions, notify
+from app.services.congress import CongressClient
 from app.services.legislators import PARTY_CODES, like_pattern, name_matches
 from app.taxonomy import POLICY_AREAS
 from app.topic_words import TOPIC_WORDS
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["bills"])
 
@@ -258,23 +266,6 @@ async def get_bill(bill_id: uuid.UUID, db: DB, user: CurrentUser):
     return (await bills_out(db, user, [bill]))[0]
 
 
-CONGRESS_GOV_TYPES = {
-    "HR": "house-bill", "S": "senate-bill", "HJRES": "house-joint-resolution", "SJRES": "senate-joint-resolution",
-    "HCONRES": "house-concurrent-resolution", "SCONRES": "senate-concurrent-resolution",
-    "HRES": "house-resolution", "SRES": "senate-resolution",
-}
-
-
-def _ordinal(n: int) -> str:
-    suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
-    return f"{n}{suffix}"
-
-
-def congress_gov_url(congress: int, bill_type: str, number: int) -> str:
-    kind = CONGRESS_GOV_TYPES.get(bill_type, "bill")
-    return f"https://www.congress.gov/bill/{_ordinal(congress)}-congress/{kind}/{number}"
-
-
 @router.get("/bills/{bill_id}/record", response_model=BillRecordOut)
 async def bill_record(bill_id: uuid.UUID, db: DB, _: CurrentUser):
     """The official record around a bill: CBO cost estimates and the bills Congress links to it (identical
@@ -291,7 +282,8 @@ async def bill_record(bill_id: uuid.UUID, db: DB, _: CurrentUser):
         found = {(c, t, n): i for c, t, n, i in rows}
     related = [
         OfficialRelated(
-            label=bill_label(r["type"], r["number"]), congress=r.get("congress"), title=r.get("title"),
+            label=bill_label(r["type"], r["number"]), congress=r.get("congress"), type=r["type"], number=r["number"],
+            title=r.get("title"),
             relationships=r.get("relationships") or [], latest=r.get("latest"),
             bill_id=found.get((r.get("congress"), r["type"], r["number"])),
             url=congress_gov_url(r.get("congress") or bill.congress_number, r["type"], r["number"]),
@@ -301,6 +293,58 @@ async def bill_record(bill_id: uuid.UUID, db: DB, _: CurrentUser):
     # Identical companions first, then earlier Congresses, newest first.
     related.sort(key=lambda r: ("Identical bill" not in r.relationships, -(r.congress or 0)))
     return BillRecordOut(cbo_estimates=bill.cbo_estimates or [], related=related)
+
+
+async def congress_api():
+    api = CongressClient()
+    try:
+        yield api
+    finally:
+        await api.close()
+
+
+@router.post("/bills/{bill_id}/record/open", response_model=OpenRelatedOut)
+async def open_related(
+    bill_id: uuid.UUID, body: OpenRelatedIn, db: DB, redis: RedisDep, user: CurrentUser,
+    api: Annotated[CongressClient, Depends(congress_api)],
+):
+    """Opens a bill Congress links to this one, inside the app. If PolitiKNOW doesn't have it yet, it's fetched
+    and summarized now, without alerts. Only bills on this bill's official list can be fetched this way."""
+    bill = await _published_bill(db, bill_id)
+    key = (body.congress, body.type.upper(), body.number)
+    linked = {(r.get("congress") or bill.congress_number, r["type"], r["number"]) for r in bill.official_related or []}
+    if key not in linked:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Congress doesn't link that bill to this one.")
+
+    async def published() -> uuid.UUID | None:
+        return await db.scalar(select(Bill.id).where(
+            Bill.congress_number == key[0], Bill.bill_type == key[1], Bill.bill_number == key[2],
+            Bill.is_published.is_(True),
+        ))
+
+    if found := await published():
+        return OpenRelatedOut(bill_id=found)
+    await enforce_hourly_limit(redis, "open_related", user.id, settings.open_related_per_hour)
+    lock = f"open-related:{key[0]}-{key[1]}-{key[2]}"
+    # Someone else is already fetching it: wait for theirs instead of paying twice.
+    for _ in range(45):
+        if await redis.set(lock, "1", nx=True, ex=120):
+            break
+        await asyncio.sleep(1)
+        if found := await published():
+            return OpenRelatedOut(bill_id=found)
+    try:
+        outcome, _ = await ingest.ingest_bill(db, api, *key, quiet=True)
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        log.warning("Couldn't fetch linked bill %s: %s", key, e)
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Couldn't reach Congress.gov. Try again in a moment.") from e
+    finally:
+        await redis.delete(lock)
+    if outcome == "waiting" or not (found := await published()):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Congress hasn't published this bill's text yet.")
+    return OpenRelatedOut(bill_id=found)
 
 
 @router.get("/bills/{bill_id}/related", response_model=list[BillOut])

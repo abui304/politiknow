@@ -327,7 +327,7 @@ const styles = StyleSheet.create({
   heroTop: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
   heroParty: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   heroPartyText: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 18 },
-  heroName: { fontFamily: fonts.semibold, fontSize: 24, lineHeight: 32 },
+  heroName: { fontFamily: fonts.semibold, fontSize: 20, lineHeight: 28 },
   heroMeta: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 20 },
   stats: {
     flexDirection: 'row',
@@ -337,7 +337,7 @@ const styles = StyleSheet.create({
     paddingTop: space.md,
     borderTopWidth: 1,
   },
-  statN: { fontFamily: fonts.medium, fontSize: 22, lineHeight: 28, ...figures },
+  statN: { fontFamily: fonts.medium, fontSize: 20, lineHeight: 28, ...figures },
   statLabel: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16 },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   mapPlaceholder: { aspectRatio: 4 / 3, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt, borderRadius: radius.md, borderCurve: 'continuous' },

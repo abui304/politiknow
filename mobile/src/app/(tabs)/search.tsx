@@ -4,9 +4,11 @@ import { ActivityIndicator, FlatList, Platform, StyleSheet, TextInput, View } fr
 import Animated, { FadeIn, FadeOut, LinearTransition, useReducedMotion } from 'react-native-reanimated';
 
 import { BillCard } from '@/components/BillCard';
+import { DefinitionCard } from '@/components/Glossary';
 import { LegislatorRow } from '@/components/LegislatorRow';
 import { BottomSheet, Button, Chip, Empty, Field, Icon, Keycap, SkeletonList, Tap, Title, Txt, Screen } from '@/components/ui';
 import { hasKeyboard } from '@/lib/device';
+import { lookup } from '@/lib/glossary';
 import { parsePlace, STATES } from '@/lib/places';
 import { useLegislators, useSearch, useStageCounts, useStateDistricts, useTags } from '@/lib/queries';
 import { useRecentSearches } from '@/lib/recent';
@@ -291,6 +293,9 @@ export default function Search() {
       ) : null}
 
       {place ? <PlaceCard state={place.state} district={place.district} /> : null}
+      {q && !place
+        ? lookup(q, 1, true).map((e) => <DefinitionCard key={e.id} entry={e} />)
+        : null}
       {searching ? (
         <>
           <Txt style={type.small} accessibilityLiveRegion="polite">
@@ -482,6 +487,15 @@ function Browse({
         </View>
       </View>
 
+      <Tap onPress={() => router.push('/glossary')} accessibilityRole="link" hitSlop={0} style={styles.glossaryRow}>
+        <Icon name="book" size={18} color={colors.inkSoft} />
+        <View style={{ flex: 1 }}>
+          <Txt style={type.bodyMedium}>Glossary</Txt>
+          <Txt style={type.small}>Congress terms, explained</Txt>
+        </View>
+        <Icon name="chevron-right" size={16} color={colors.muted} />
+      </Tap>
+
       <View style={{ gap: space.sm }}>
         <Txt style={type.h3}>Where bills stand</Txt>
         <View style={styles.statusList}>
@@ -643,6 +657,14 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null),
   },
   place: { gap: space.sm, padding: space.lg, backgroundColor: colors.surface, ...outline(radius.md) },
+  glossaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    padding: space.lg,
+    backgroundColor: colors.surface,
+    ...outline(radius.md),
+  },
   boxClear: {
     width: 28,
     height: 28,

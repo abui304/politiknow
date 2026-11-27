@@ -9,6 +9,7 @@ import type { MemberPosition, PartyTally, RollCall } from '@/lib/types';
 import { colors, figures, fonts, outline, radius, space, type } from '@/theme';
 
 import { ContactButton } from './ContactMembers';
+import { Defined } from './Glossary';
 import { LegislatorPhoto } from './LegislatorPhoto';
 import { Button, Icon, Tap, Txt } from './ui';
 
@@ -91,7 +92,7 @@ export function RollCallCard({ rc, showMeasure = false }: { rc: RollCall; showMe
           {`${chamberName(rc.chamber)} · roll call ${rc.number} · ${shortDate(rc.voted_at)}`}
           {showMeasure && rc.measure ? ` · ${rc.measure}` : ''}
         </Txt>
-        <Txt style={type.bodyMedium}>{rc.question}</Txt>
+        <Defined style={type.bodyMedium} text={rc.question} />
         <Txt style={[type.small, figures]}>
           {rc.result ? `${rc.result}. ` : ''}
           {rc.yea} yea, {rc.nay} nay{rc.not_voting ? `, ${rc.not_voting} not voting` : ''}
@@ -168,7 +169,7 @@ export function LegislatorVotes({ id, name }: { id: string; name: string }) {
             <Txt style={type.body} numberOfLines={2}>
               {v.bill_title ?? v.roll_call.question}
             </Txt>
-            {v.bill_title ? <Txt style={type.small}>{v.roll_call.question}</Txt> : null}
+            {v.bill_title ? <Defined style={type.small} text={v.roll_call.question} /> : null}
           </View>
           {v.bill_id ? <Icon name="chevron-right" size={16} color={colors.muted} /> : null}
         </Tap>
@@ -199,7 +200,7 @@ export function MyMembersVotes() {
           style={styles.recent}
           hitSlop={0}>
           <Txt style={type.meta}>{`${chamberName(rc.chamber)} · ${rc.measure ?? 'Recorded vote'} · ${shortDate(rc.voted_at)}`}</Txt>
-          <Txt style={type.bodyMedium}>{rc.question}</Txt>
+          <Defined style={type.bodyMedium} text={rc.question} />
           <Txt style={type.small}>
             {rc.your_members.map((m) => `${m.name} ${m.position}`).join(' · ')}
             {rc.result ? ` · ${rc.result}` : ''}

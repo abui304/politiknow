@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import Svg, { Circle, G, Path, Rect, Text as SvgText } from 'react-native-svg';
 
-import { svgPress } from '@/lib/svg';
+import { pathContains, svgPress } from '@/lib/svg';
 import type { StateMap } from '@/lib/types';
 import { colors, float, fonts, outline, partyColors, radius } from '@/theme';
 
@@ -135,9 +135,28 @@ function StateInset({ map, district, color, view }: { map: StateMap; district: s
 
 const styles = StyleSheet.create({
   frame: { width: '100%', backgroundColor: colors.surfaceAlt, overflow: 'hidden' },
+  pointing: { cursor: 'pointer' },
   expand: { position: 'absolute', right: 12, top: 12, width: 36, height: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
   inset: { position: 'absolute', right: 12, bottom: 12, width: 96, aspectRatio: ASPECT, backgroundColor: colors.surface, overflow: 'hidden' },
 });
+
+/**
+ * The shape under the mouse, drawn over the map so you can see what a click will pick: a colored district
+ * lightens, and a plain white one (it can't get any lighter) takes a soft tint. Both get a darker outline.
+ */
+export function HoverShade({ d, colored, unit }: { d: string; colored: boolean; unit: number }) {
+  return (
+    <Path
+      d={d}
+      fill={colored ? colors.surface : colors.surfaceAlt}
+      fillOpacity={colored ? 0.22 : 1}
+      stroke={colors.ink}
+      strokeWidth={1.5 * unit}
+      strokeLinejoin="round"
+      pointerEvents="none"
+    />
+  );
+}
 
 type StateDistrictsSvgProps = {
   map: StateMap;
@@ -154,11 +173,13 @@ type StateDistrictsSvgProps = {
   followingColor: string;
   /** City labels to show; a full-screen map has room for more. */
   maxLabels?: number;
+  /** The district under the mouse, shaded so you can see what a click picks. */
+  hovered?: string | null;
 };
 
 /** A state's districts, each tappable, with your district and followed ones filled in and city labels. */
 export function StateDistrictsSvg({
-  map, view, px, selected, selectedParty, home, following, onSelect, homeColor, followingColor, maxLabels = MAX_LABELS,
+  map, view, px, selected, selectedParty, home, following, onSelect, homeColor, followingColor, maxLabels = MAX_LABELS, hovered,
 }: StateDistrictsSvgProps) {
   const unit = (view[2] - view[0]) / px;
   const cities = pickCities(map, view, selected, false, maxLabels);
@@ -182,6 +203,9 @@ export function StateDistrictsSvg({
           {...svgPress(select(n))}
         />
       ))}
+      {hovered && map.districts[hovered] ? (
+        <HoverShade d={map.districts[hovered].path} colored={fill(hovered) !== colors.surface} unit={unit} />
+      ) : null}
       <Path d={map.outline} fill="none" stroke={colors.ink} strokeWidth={1.5 * unit} strokeLinejoin="round" />
       {cities.map((c) => {
         const flip = c.x > view[0] + (view[2] - view[0]) * 0.62;
@@ -222,13 +246,34 @@ type StateDistrictsMapProps = Omit<StateDistrictsSvgProps, 'view' | 'px' | 'maxL
 /** A state's district map for a page, zoomed to the selected district if it's small. */
 export function StateDistrictsMap({ onExpand, ...props }: StateDistrictsMapProps) {
   const [px, setPx] = useState(340);
-  const { map, selected, selectedParty } = props;
+  const [hovered, setHovered] = useState<string | null>(null);
+  const { map, selected, selectedParty, onSelect } = props;
   const { view, zoomed } = stateView(map, selected);
   const target = selected !== null ? map.districts[selected] : undefined;
 
+  // With a mouse (web): find the district under the pointer. The map fills the frame at the same aspect
+  // ratio as its view box, so a pixel maps straight to map units.
+  const hover =
+    Platform.OS === 'web' && onSelect
+      ? {
+          onPointerMove: (e: { nativeEvent: { clientX: number; clientY: number }; currentTarget: unknown }) => {
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            const unit = (view[2] - view[0]) / rect.width;
+            const x = view[0] + (e.nativeEvent.clientX - rect.left) * unit;
+            const y = view[1] + (e.nativeEvent.clientY - rect.top) * unit;
+            const n = Object.keys(map.districts).find((d) => pathContains(map.districts[d].path, x, y)) ?? null;
+            if (n !== hovered) setHovered(n);
+          },
+          onPointerLeave: () => setHovered(null),
+        }
+      : {};
+
   return (
-    <View style={[styles.frame, outline(radius.lg), { aspectRatio: ASPECT }]} onLayout={(e) => setPx(e.nativeEvent.layout.width || px)}>
-      <StateDistrictsSvg {...props} view={view} px={px} />
+    <View
+      style={[styles.frame, outline(radius.lg), { aspectRatio: ASPECT }, hovered !== null && styles.pointing]}
+      onLayout={(e) => setPx(e.nativeEvent.layout.width || px)}
+      {...hover}>
+      <StateDistrictsSvg {...props} view={view} px={px} hovered={hovered} />
       {zoomed && target ? <StateInset map={map} district={target.path} color={partyColors(selectedParty).main} view={view} /> : null}
       {onExpand ? (
         <Tap

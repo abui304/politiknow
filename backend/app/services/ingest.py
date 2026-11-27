@@ -5,14 +5,14 @@ import hashlib
 import logging
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import timeline
 from app.config import settings
 from app.models import Bill, BillCosponsor, IngestState
-from app.services import blurhash, hashtags, legislators, llm, notify, votes
+from app.services import blurhash, floor, hashtags, legislators, llm, notify, votes
 from app.services.congress import CongressClient
 
 log = logging.getLogger(__name__)
@@ -81,12 +81,15 @@ async def ingest_bill(
     bill_type: str,
     number: int,
     vocab: dict[str, str] | None = None,
+    quiet: bool = False,
 ) -> tuple[str, list[dict]]:
     """Ingests or refreshes one bill. Returns (outcome, push messages to send after commit).
 
     outcome: "new" (first published), "updated" (text changed and re-summarized),
     "refreshed" (metadata only), or "waiting" (no full text published yet).
+    quiet: no alerts. Bills from earlier Congresses are always quiet: they're history, not news.
     """
+    quiet = quiet or congress != settings.congress_number
     bill_type = bill_type.upper()
     bill = await db.scalar(
         select(Bill).where(
@@ -146,11 +149,13 @@ async def ingest_bill(
             bill.is_published = True
             outcome = "new" if first_publish else "updated"
             await db.flush()
-            if first_publish:
+            if first_publish and not quiet:
                 pushes += await notify.notify_new_bill(db, bill)  # Step 8
                 cosponsors = await db.scalars(select(BillCosponsor.bioguide_id).where(BillCosponsor.bill_id == bill.id))
                 pushes += await notify.notify_legislator_bill(db, bill, bill.sponsor_id, set(cosponsors))
 
+    if quiet:
+        return outcome, pushes
     if outcome in ("refreshed", "updated") and new_cosponsors:
         await db.flush()
         pushes += await notify.notify_legislator_bill(db, bill, None, new_cosponsors)
@@ -159,6 +164,34 @@ async def ingest_bill(
         await db.flush()
         pushes += await notify.notify_status_change(db, bill)
     return outcome, pushes
+
+
+async def _floor_targets(db: AsyncSession) -> list[tuple[int, str, int]]:
+    """Bills on this week's floor schedule that PolitiKNOW doesn't have yet. They're about to be voted on, so
+    they're worth a summary even if Congress.gov's update list hasn't reached them."""
+    if not settings.ingest_floor_bills:
+        return []
+    from app.redis_client import redis
+
+    try:
+        week = await floor.this_week(redis)
+    except Exception:
+        log.exception("Couldn't read the floor schedule")
+        return []
+    keys = {
+        key for chamber in ("house", "senate") for item in week.get(chamber, [])
+        for label in item.get("bills", []) if (key := floor.bill_key(label))
+    }
+    if not keys:
+        return []
+    have = set(await db.execute(
+        select(Bill.bill_type, Bill.bill_number).where(
+            Bill.congress_number == settings.congress_number,
+            tuple_(Bill.bill_type, Bill.bill_number).in_(list(keys)),
+        )
+    ))
+    missing = sorted(k for k in keys if tuple(k) not in {tuple(h) for h in have})
+    return [(settings.congress_number, t, n) for t, n in missing[: settings.ingest_max_bills_per_run]]
 
 
 async def _acquire_lock(db: AsyncSession, now: str, stale_before: str) -> bool:
@@ -213,6 +246,8 @@ async def _run_ingestion(db: AsyncSession, api: CongressClient, now: datetime, f
     )
     seen = set(targets)
     targets += [tuple(row) for row in pending if tuple(row) not in seen]
+    seen = set(targets)
+    targets += [t for t in await _floor_targets(db) if t not in seen]
 
     vocab = await hashtags.vocabulary(db)  # shared across the run so bills in it reuse each other's hashtags
     counts = {"new": 0, "updated": 0, "refreshed": 0, "waiting": 0, "failed": 0}

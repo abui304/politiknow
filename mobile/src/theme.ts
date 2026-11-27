@@ -9,6 +9,7 @@ export const colors = {
   surface: '#FFFFFF',
   surfaceAlt: '#F2EDE8', // a step down from paper, for wells, skeletons and pressed states
   ink: '#2B2622',
+  inkHover: '#3D3630', // ink one step lighter, for a filled button under the pointer
   inkSoft: '#5C544D',
   muted: '#736B64',
   line: 'rgba(43,38,34,0.10)', // hairline borders
@@ -20,6 +21,7 @@ export const colors = {
   success: '#22774F',
   warning: '#8F5F00',
   danger: '#BA2B2E', // the Republican red, so red means one thing visually
+  dangerHover: '#A32326',
 };
 
 // Full-card party colors. `on` is the text and icon color that reads on `main`.

@@ -194,7 +194,8 @@ export type FloorItem = {
   day: string | null; // YYYY-MM-DD; null = sometime this week (House)
   heading: string;
   text: string;
-  bills: { label: string; bill_id: string | null }[];
+  /** bill_id when PolitiKNOW has the bill; url (Congress.gov) for every bill. */
+  bills: { label: string; bill_id: string | null; url: string | null }[];
 };
 
 export type FloorWeek = {
@@ -366,7 +367,10 @@ export type Digest = {
   followed: DigestBill[];
   votes: RollCall[];
   passed: DigestBill[];
-  floor: { chamber: Chamber; label: string; bill_id: string | null }[];
+  /** Bills on this week's floor schedule that you follow, are about your topics, or your members sponsored. */
+  coming_up: DigestBill[];
+  /** Every bill on this week's schedule (the full list is on the calendar). */
+  floor_count: number;
   is_empty: boolean;
 };
 
@@ -382,6 +386,8 @@ export type CostEstimate = { title: string | null; description: string | null; u
 export type OfficialRelated = {
   label: string;
   congress: number | null;
+  type: string;
+  number: number;
   title: string | null;
   /** Official wording: "Identical bill", "Related bill", "Procedurally-related"… */
   relationships: string[];

@@ -4,6 +4,7 @@ os.environ["DATABASE_URL"] = "postgresql+asyncpg://localhost/politiknow_test"
 os.environ["REDIS_URL"] = "redis://localhost:6379/15"
 os.environ["OPENAI_API_KEY"] = ""
 os.environ["BCRYPT_ROUNDS"] = "4"
+os.environ["INGEST_FLOOR_BILLS"] = "false"
 os.environ["COMMENT_MIN_ACCOUNT_AGE_MINUTES"] = "0"
 
 import pytest  # noqa: E402

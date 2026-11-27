@@ -3,7 +3,7 @@ from datetime import UTC, date, datetime, timedelta
 from sqlalchemy import select
 
 from app.models import User
-from app.services import email, votes
+from app.services import email, floor, votes
 from app.services.digest import build, week_bounds
 from tests.conftest import signup
 from tests.factories import make_bill
@@ -54,6 +54,37 @@ async def test_a_quiet_week_is_empty(client, db):
     h = await signup(client, "reader")
     out = (await client.get("/digest", headers=h)).json()
     assert out["is_empty"] and out["followed"] == [] and out["passed"] == []
+
+
+async def test_coming_up_lists_only_your_scheduled_bills(client, db, monkeypatch):
+    followed = await make_bill(db, title="Followed Bill", tags=("Energy",), days_ago=20)
+    topical = await make_bill(db, title="Your Topic", tags=("Health",), bill_type="S")
+    other = await make_bill(db, title="Not Yours", tags=("Agriculture and Food",))
+    labels = [b.label for b in (followed, topical, other)] + ["H.R. 99999"]
+
+    async def fake_week(redis, today=None):
+        return {"week_of": START.isoformat(), "house_week_of": START.isoformat(),
+                "house": [{"day": None, "heading": "Under a rule", "text": "x", "bills": labels[:1] + labels[2:]}],
+                "senate": [{"day": None, "heading": "Next meeting", "text": "y", "bills": [labels[1]]}],
+                "house_url": "", "senate_url": ""}
+
+    monkeypatch.setattr(floor, "this_week", fake_week)
+    h = await signup(client, "planner")
+    user = await _user(db, "planner")
+    user.onboarding_tags = ["Health"]
+    await db.commit()
+    await client.post(f"/bills/{followed.id}/follow", headers=h)
+
+    out = (await client.get("/digest", headers=h)).json()
+    # The full schedule is on the calendar; the recap only picks out what's yours.
+    assert out["floor_count"] == 4
+    assert sorted((b["title"], b["what"]) for b in out["coming_up"]) == [
+        ("Followed Bill", "Scheduled for a House vote"), ("Your Topic", "On the Senate’s agenda"),
+    ]
+    assert not out["is_empty"]
+    # A past week's recap doesn't show this week's schedule.
+    past = (await client.get("/digest", headers=h, params={"week": (START - timedelta(days=7)).isoformat()})).json()
+    assert past["coming_up"] == [] and past["floor_count"] == 0
 
 
 async def test_recap_email_opt_in_send_once_and_unsubscribe(client, db, monkeypatch):

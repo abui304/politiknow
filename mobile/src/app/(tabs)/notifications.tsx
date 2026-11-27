@@ -49,10 +49,10 @@ export default function Notifications() {
           <View style={{ paddingTop: space.md, paddingBottom: space.lg, gap: space.md }}>
             <Title>Alerts</Title>
             <Tap onPress={() => router.push('/digest')} accessibilityRole="link" style={styles.recap}>
-              <Icon name="book-open" size={18} color={colors.inkSoft} />
+              <Icon name="file-text" size={18} color={colors.inkSoft} />
               <View style={{ flex: 1 }}>
-                <Txt style={type.bodyMedium}>Your week in Congress</Txt>
-                <Txt style={type.small}>What moved, how your members voted, and what passed</Txt>
+                <Txt style={type.bodyMedium}>Weekly recap</Txt>
+                <Txt style={type.small}>What moved and how your members voted</Txt>
               </View>
               <Icon name="chevron-right" size={16} color={colors.muted} />
             </Tap>

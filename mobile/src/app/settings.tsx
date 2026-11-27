@@ -130,6 +130,7 @@ function SettingsForm({ me }: { me: Me }) {
         <Txt style={type.small}>Signed in {me.email ? `as ${me.email}` : `with ${me.auth_provider}`}</Txt>
         <Button title="Sign out" icon="log-out" variant="secondary" onPress={() => signOut()} />
         <Button title="Privacy and how we stay neutral" icon="shield" variant="ghost" onPress={() => router.push('/about')} />
+        <Button title="Glossary" icon="book" variant="ghost" onPress={() => router.push('/glossary')} />
         <DeleteAccount />
       </Section>
     </Screen>

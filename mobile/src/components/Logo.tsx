@@ -1,4 +1,5 @@
-import { Text, View } from 'react-native';
+import { Text } from 'react-native';
+import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Circle, Line } from 'react-native-svg';
 
 import { colors, fonts } from '@/theme';
@@ -19,15 +20,30 @@ export function PathMark({ height = 24, color = colors.ink, ring = colors.hairli
   );
 }
 
-/** The logo: the Path mark and the PolitiKNOW wordmark, with KNOW set in caps to match the name. */
-export function Logo({ size = 22 }: { size?: number }) {
+/**
+ * The logo: the Path mark and the PolitiKNOW wordmark, with KNOW set in caps to match the name. With a mouse, it
+ * grows a little while the pointer is over it (from its left edge, so it never nudges what's beside it; from its middle when it's centered).
+ */
+export function Logo({ size = 22, centered = false }: { size?: number; centered?: boolean }) {
+  const scale = useSharedValue(1);
+  const reduce = useReducedMotion();
+  const grow = (to: number) => {
+    if (!reduce) scale.set(withTiming(to, { duration: 180, easing: Easing.out(Easing.cubic) }));
+  };
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: size * 0.45 }} accessible accessibilityRole="image" accessibilityLabel="PolitiKNOW">
+    <Animated.View
+      style={[{ flexDirection: 'row', alignItems: 'center', gap: size * 0.45, transformOrigin: centered ? 'center' : 'left center' }, style]}
+      onPointerEnter={() => grow(1.08)}
+      onPointerLeave={() => grow(1)}
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel="PolitiKNOW">
       <PathMark height={size * 1.05} />
       <Text style={{ fontSize: size, lineHeight: size * 1.3, color: colors.ink, letterSpacing: -0.2 }}>
         <Text style={{ fontFamily: fonts.regular }}>Politi</Text>
         <Text style={{ fontFamily: fonts.semibold }}>KNOW</Text>
       </Text>
-    </View>
+    </Animated.View>
   );
 }

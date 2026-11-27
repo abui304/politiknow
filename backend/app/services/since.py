@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import explain
+from app.config import settings
 from app.models import Bill, BillFollow, MemberVote, RollCall, User
 from app.schemas import SinceItem, SinceOut
 from app.services.notify import ALERT_VOTE_KINDS, followed_tags, members_of
@@ -63,7 +64,9 @@ async def since_last_visit(db: AsyncSession, user: User) -> SinceOut:
     if tags:
         new_by_tag = dict((await db.execute(
             select(func.jsonb_array_elements_text(Bill.primary_tags).label("tag"), func.count())
-            .where(Bill.is_published.is_(True), Bill.ingested_at > since)
+            # Only this Congress's bills are news; older ones are fetched when someone opens a linked bill.
+            .where(Bill.is_published.is_(True), Bill.ingested_at > since,
+                   Bill.congress_number == settings.congress_number)
             .group_by("tag")
         )).all())
         hits = [(t, new_by_tag[t]) for t in tags if new_by_tag.get(t)]

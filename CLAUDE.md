@@ -56,6 +56,7 @@ Run backend tests + ruff, and mobile typecheck + lint, before calling work done.
 - UI uses line icons only, never emoji. Bill cards keep full party colors (blue D, red R, yellow I).
 - Don't add paid services. OpenAI usage is the only accepted cost, plus Brevo's free plan for the one opt-in weekly recap email (no other email). Apple sign-in/iOS push, ads, and premium are intentionally deferred (see README "Not built yet").
 - Retention features stay calm and neutral: no streaks, guilt or teaser alerts, outrage ranking, leaderboards, or tracking SDKs. Votes are shown verbatim from the clerks with grey tallies in fixed party order; recap and "since your last visit" picks follow the published rules in `services/digest.py` and `services/since.py`, never AI.
+- Glossary definitions (`mobile/src/lib/glossary.ts`) are written by hand, never AI, and say what a term does, not whether it's good. When Congress text in the app uses a new term, add it there with the exact phrasings from the record as aliases.
 - Analytics are limited to `activity_days`, `notifications.opened_at`, and the fixed event list in `models.EVENT_NAMES`; never log search text, IPs or devices.
 - Users are anonymous by design: show display names only, never real or Google profile names.
 - Schema changes need an Alembic migration. If existing data needs a backfill, add a `cli` command and note it in the README.

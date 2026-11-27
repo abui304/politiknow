@@ -230,11 +230,23 @@ class CostEstimate(BaseModel):
 class OfficialRelated(BaseModel):
     label: str  # "S. 1720"
     congress: int | None
+    type: str  # "S", "HR", ...
+    number: int
     title: str | None
     relationships: list[str]  # "Identical bill", "Related bill", "Procedurally-related" (official wording)
     latest: str | None
     bill_id: uuid.UUID | None  # set when the bill is in the app
     url: str  # its Congress.gov page
+
+
+class OpenRelatedIn(BaseModel):
+    congress: int
+    type: str
+    number: int
+
+
+class OpenRelatedOut(BaseModel):
+    bill_id: uuid.UUID
 
 
 class BillRecordOut(BaseModel):
@@ -328,18 +340,14 @@ class DigestBill(BaseModel):
     what: str  # what happened this week, e.g. "Passed House"
 
 
-class DigestFloorItem(BaseModel):
-    chamber: Literal["house", "senate"]
-    label: str
-    bill_id: uuid.UUID | None
-
-
 class DigestOut(BaseModel):
     week_start: date
     followed: list[DigestBill]
     votes: list[RollCallOut]
     passed: list[DigestBill]
-    floor: list[DigestFloorItem]
+    # Bills on this week's floor schedule that you follow, are about your topics, or your members sponsored.
+    coming_up: list[DigestBill]
+    floor_count: int  # every bill on this week's schedule, for the link to the full calendar
     is_empty: bool
 
 
@@ -394,6 +402,7 @@ class RepresentativesOut(BaseModel):
 class FloorBill(BaseModel):
     label: str  # "H.R. 2066"
     bill_id: uuid.UUID | None  # when PolitiKNOW has the bill
+    url: str | None = None  # its Congress.gov page, for bills PolitiKNOW doesn't have (yet)
 
 
 class FloorItem(BaseModel):

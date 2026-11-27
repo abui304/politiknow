@@ -4,12 +4,12 @@ from datetime import date
 
 from fastapi import APIRouter, Query
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select, tuple_
+from sqlalchemy import select
 
 from app.config import settings
 from app.deps import DB, CurrentUser, RedisDep
 from app.models import Bill, User
-from app.schemas import DigestBill, DigestFloorItem, DigestOut
+from app.schemas import DigestBill, DigestOut
 from app.services import digest as digest_service
 from app.services import floor
 
@@ -23,26 +23,20 @@ def _bill(b: Bill, what: str) -> DigestBill:
 @router.get("/digest", response_model=DigestOut)
 async def get_digest(db: DB, redis: RedisDep, user: CurrentUser, week: date | None = Query(None)):
     """The recap for the week containing `week` (default: this week), built by the rules in services/digest.py."""
-    try:
-        floor_week = await floor.this_week(redis)
-    except Exception:  # the floor schedule is a nice-to-have here
-        floor_week = None
+    floor_week = None
+    if week is None or digest_service.week_bounds(week)[0] == digest_service.week_bounds(date.today())[0]:
+        try:
+            floor_week = await floor.this_week(redis)
+        except Exception:  # the floor schedule is a nice-to-have here
+            floor_week = None
     d = await digest_service.build(db, user, week, floor_week)
-    keys = {i["label"]: k for i in d.floor if (k := floor.bill_key(i["label"]))}
-    found = {}
-    if keys:
-        rows = await db.execute(select(Bill.bill_type, Bill.bill_number, Bill.id).where(
-            Bill.congress_number == settings.congress_number, Bill.is_published.is_(True),
-            tuple_(Bill.bill_type, Bill.bill_number).in_(list(set(keys.values()))),
-        ))
-        found = {(t, n): bid for t, n, bid in rows}
     return DigestOut(
         week_start=d.week_start,
         followed=[_bill(b, w) for b, w in d.followed],
         votes=d.votes,
         passed=[_bill(b, w) for b, w in d.passed],
-        floor=[DigestFloorItem(chamber=i["chamber"], label=i["label"], bill_id=found.get(keys.get(i["label"])))
-               for i in d.floor],
+        coming_up=[_bill(b, w) for b, w in d.coming_up],
+        floor_count=d.floor_count,
         is_empty=d.is_empty,
     )
 

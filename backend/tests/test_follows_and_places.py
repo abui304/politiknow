@@ -264,4 +264,9 @@ async def test_calendar_links_known_bills(client, db, monkeypatch):
     h = await signup(client, "scheduler")
     r = (await client.get("/calendar", headers=h)).json()
     assert r["week_of"] == "2026-10-05"
-    assert r["house"][0]["bills"] == [{"label": label, "bill_id": str(bill.id)}, {"label": "S. 99999", "bill_id": None}]
+    # Every bill links somewhere: into the app when we have it, otherwise to Congress.gov.
+    assert r["house"][0]["bills"] == [
+        {"label": label, "bill_id": str(bill.id),
+         "url": f"https://www.congress.gov/bill/119th-congress/house-bill/{bill.bill_number}"},
+        {"label": "S. 99999", "bill_id": None, "url": "https://www.congress.gov/bill/119th-congress/senate-bill/99999"},
+    ]

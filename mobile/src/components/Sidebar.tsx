@@ -36,18 +36,24 @@ const MAIN: Item[] = [
   },
 ];
 const MORE: Item[] = [
-  { href: '/digest', match: (p) => p.startsWith('/digest'), label: 'Your week in Congress', icon: 'book-open' },
+  { href: '/digest', match: (p) => p.startsWith('/digest'), label: 'Recap', icon: 'file-text' },
   {
     href: '/calendar',
     match: (p) => p.startsWith('/calendar'),
-    label: 'This week on the floor',
+    label: 'Schedule',
     icon: 'calendar',
   },
   {
     href: '/map',
     match: (p) => p.startsWith('/map') || p.startsWith('/state'),
-    label: 'Map of Congress',
+    label: 'Map',
     icon: 'map',
+  },
+  {
+    href: '/glossary',
+    match: (p) => p.startsWith('/glossary'),
+    label: 'Glossary',
+    icon: 'book',
   },
   {
     href: '/settings',

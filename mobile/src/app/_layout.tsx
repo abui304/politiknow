@@ -9,7 +9,7 @@ import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persi
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import * as Linking from 'expo-linking';
-import { type Href, router, Stack } from 'expo-router';
+import { type Href, router, Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -19,6 +19,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { CommandMenu, useCommandMenu } from '@/components/CommandMenu';
 import { Sidebar } from '@/components/Sidebar';
+import { GlossaryProvider } from '@/components/Glossary';
 import { Toaster } from '@/components/ui';
 import { ApiError } from '@/lib/api';
 import { useWide } from '@/lib/layout';
@@ -91,6 +92,55 @@ function useShortcuts(enabled: boolean) {
   }, [enabled]);
 }
 
+/**
+ * Keyboard focus on web: one ink ring around whatever is focused, in place of the browser's default color.
+ * Text fields are left out, they show focus with their own border.
+ */
+function useFocusRing() {
+  useEffect(() => {
+    if (Platform.OS !== 'web' || document.getElementById('pk-focus-ring')) return;
+    const el = document.createElement('style');
+    el.id = 'pk-focus-ring';
+    el.textContent = `:focus-visible:not(input):not(textarea){outline:2px solid ${colors.ink};outline-offset:2px}`;
+    document.head.appendChild(el);
+  }, []);
+}
+
+/** Browser tab titles on web: the screen's name, then the app's, so a tab never shows a bare URL. */
+const PAGE_TITLES: Record<string, string> = {
+  '/': 'Feed',
+  '/search': 'Search',
+  '/notifications': 'Alerts',
+  '/profile': 'Me',
+  '/login': 'Sign in',
+  '/register': 'Create your account',
+  '/about': 'Privacy and neutrality',
+  '/glossary': 'Glossary',
+  '/settings': 'Settings',
+  '/calendar': 'Floor schedule',
+  '/digest': 'Weekly recap',
+  '/map': 'Your map',
+  '/moderation': 'Moderation',
+};
+const SECTION_TITLES: Record<string, string> = {
+  bill: 'Bill',
+  cosponsors: 'Cosponsors',
+  legislator: 'Member of Congress',
+  user: 'Profile',
+  state: 'State',
+  'state-map': 'District map',
+  onboarding: 'Getting started',
+};
+
+function usePageTitle() {
+  const pathname = usePathname();
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const name = PAGE_TITLES[pathname] ?? SECTION_TITLES[pathname.split('/')[1] ?? ''];
+    document.title = name ? `${name} · PolitiKNOW` : 'PolitiKNOW';
+  }, [pathname]);
+}
+
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
     Merriweather_400Regular,
@@ -115,6 +165,8 @@ export default function RootLayout() {
     if (ready) SplashScreen.hideAsync().catch(() => {});
   }, [ready]);
   const wide = useWide();
+  useFocusRing();
+  usePageTitle();
   useShortcuts(ready && Boolean(accessToken) && stage === 'ready');
   useSharedLinks(ready, Boolean(accessToken) && stage === 'ready');
   if (!ready) return null;
@@ -136,6 +188,7 @@ export default function RootLayout() {
         }}>
         <SafeAreaProvider>
           <StatusBar style="dark" />
+          <GlossaryProvider>
           <View style={[styles.outer, wide && styles.outerWide]}>
             {wide && inApp ? <Sidebar /> : null}
             <View style={wide ? styles.appWide : styles.app}>
@@ -179,11 +232,13 @@ export default function RootLayout() {
               </Stack.Protected>
               {/* Open to everyone. Listed last: signed-out visitors land on the first screen they're allowed. */}
               <Stack.Screen name="about" />
+              <Stack.Screen name="glossary" />
             </Stack>
             <Toaster />
             {signedIn && stage === 'ready' ? <CommandMenu /> : null}
           </View>
         </View>
+          </GlossaryProvider>
       </SafeAreaProvider>
     </PersistQueryClientProvider>
     </GestureHandlerRootView>

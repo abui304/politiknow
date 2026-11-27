@@ -5,6 +5,7 @@ from sqlalchemy import select, tuple_
 
 from app.config import settings
 from app.deps import DB, CurrentUser, RedisDep
+from app.links import congress_gov_url
 from app.models import Bill
 from app.schemas import FloorBill, FloorItem, FloorWeek
 from app.services import floor
@@ -29,13 +30,19 @@ async def floor_calendar(db: DB, redis: RedisDep, _: CurrentUser):
         )
         found = {(t, n): bill_id for t, n, bill_id in rows}
 
+    def floor_bill(label: str) -> FloorBill:
+        # Every bill links somewhere: into the app when we have it, otherwise to its Congress.gov page.
+        key = keys.get(label)
+        url = congress_gov_url(settings.congress_number, *key) if key else None
+        return FloorBill(label=label, bill_id=found.get(key), url=url)
+
     def out(chamber, i) -> FloorItem:
         return FloorItem(
             chamber=chamber,
             day=date.fromisoformat(i["day"]) if i["day"] else None,
             heading=i["heading"],
             text=i["text"],
-            bills=[FloorBill(label=label, bill_id=found.get(keys.get(label))) for label in i["bills"]],
+            bills=[floor_bill(label) for label in i["bills"]],
         )
 
     return FloorWeek(

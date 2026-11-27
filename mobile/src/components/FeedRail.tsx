@@ -122,9 +122,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.medium,
     fontSize: 13,
     lineHeight: 18,
-    letterSpacing: 0.4,
     color: colors.inkSoft,
-    textTransform: 'uppercase',
   },
   link: {
     fontFamily: fonts.medium,

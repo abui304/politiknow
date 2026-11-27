@@ -54,7 +54,6 @@ export default function Login() {
           textContentType="password"
           ref={passwordRef}
           returnKeyType="go"
-          placeholder="••••••••"
           onSubmitEditing={submit}
         />
         <Button title="Sign in" onPress={submit} loading={busy} disabled={!email || !password} />

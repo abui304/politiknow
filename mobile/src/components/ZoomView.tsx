@@ -26,6 +26,11 @@ type Props = {
   ref?: Ref<ZoomHandle>;
   /** A tap (not a drag or pinch), at (x, y) in map units. `unit` is map units per screen pixel; `k` the zoom. */
   onTap?: (x: number, y: number, unit: number, k: number) => void;
+  /** With a mouse: the pointer moved to (x, y), in map units like `onTap`. Return whether something tappable
+   *  is under it, for the pointing-hand cursor. */
+  onHover?: (x: number, y: number, unit: number, k: number) => boolean;
+  /** The pointer left the map, or a drag or pinch started. */
+  onHoverEnd?: () => void;
   /** Renders the SVG for a view box. `px` is the on-screen width, so strokes and text can stay a constant size.
    *  Taps go to `onTap`, not to the shapes: on phones the gesture handler gets the touches first. */
   children: (view: Box, px: number, k: number) => ReactNode;
@@ -45,8 +50,9 @@ function toAspect([x0, y0, x1, y1]: Box, aspect: number): Box {
 /** Pinch to zoom and drag to pan an SVG map, with +/- and reset buttons (also how web zooms).
  *  During a gesture the rendered SVG is just transformed; when the gesture ends the zoom is committed to
  *  the view box, so the map redraws sharp, with lines and labels at their normal size. */
-export function ZoomView({ base, initial, maxZoom, ref, onTap, children }: Props) {
+export function ZoomView({ base, initial, maxZoom, ref, onTap, onHover, onHoverEnd, children }: Props) {
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const [pointing, setPointing] = useState(false);
   const [zoom, setZoom] = useState<Zoom | null>(null);
 
   // Live gesture transform, committed to `zoom` when the gesture ends.
@@ -127,10 +133,22 @@ export function ZoomView({ base, initial, maxZoom, ref, onTap, children }: Props
     if (active.get() === 0) scheduleOnRN(commit, s.get(), tx.get(), ty.get());
   };
 
+  const hoverAt = (x: number, y: number) => {
+    if (!size || !onHover) return;
+    const unit = vw / size.w;
+    setPointing(onHover(view[0] + x * unit, view[1] + y * unit, unit, z.k));
+  };
+  const hoverEnd = () => {
+    setPointing(false);
+    onHoverEnd?.();
+  };
   const pan = Gesture.Pan()
     .minDistance(6)
     .averageTouches(true)
-    .onStart(() => begin())
+    .onStart(() => {
+      begin();
+      scheduleOnRN(hoverEnd);
+    })
     .onUpdate((e) => {
       panX.set(e.translationX);
       panY.set(e.translationY);
@@ -159,8 +177,12 @@ export function ZoomView({ base, initial, maxZoom, ref, onTap, children }: Props
     .onEnd((e, success) => {
       if (success) scheduleOnRN(tapAt, e.x, e.y);
     });
-  // A tap wins only if the fingers don't move enough to start a drag or pinch.
-  const gesture = Gesture.Race(tap, Gesture.Simultaneous(pan, pinchGesture));
+  const hover = Gesture.Hover()
+    .enabled(Boolean(onHover))
+    .onUpdate((e) => scheduleOnRN(hoverAt, e.x, e.y))
+    .onEnd(() => scheduleOnRN(hoverEnd));
+  // A tap wins only if the fingers don't move enough to start a drag or pinch. Hovering runs alongside.
+  const gesture = Gesture.Simultaneous(hover, Gesture.Race(tap, Gesture.Simultaneous(pan, pinchGesture)));
 
   const animated = useAnimatedStyle(() => ({
     transform: [{ translateX: tx.get() }, { translateY: ty.get() }, { scale: s.get() }],
@@ -175,7 +197,7 @@ export function ZoomView({ base, initial, maxZoom, ref, onTap, children }: Props
       }}>
       {size ? (
         <GestureDetector gesture={gesture}>
-          <Animated.View style={[StyleSheet.absoluteFill, animated]}>{children(view, size.w, z.k)}</Animated.View>
+          <Animated.View style={[StyleSheet.absoluteFill, pointing && styles.pointing, animated]}>{children(view, size.w, z.k)}</Animated.View>
         </GestureDetector>
       ) : null}
       <View style={styles.controls}>
@@ -203,6 +225,7 @@ function ZoomButton({ icon, label, disabled, onPress }: { icon: 'plus' | 'minus'
 
 const styles = StyleSheet.create({
   viewport: { flex: 1, overflow: 'hidden', backgroundColor: colors.surfaceAlt },
+  pointing: { cursor: 'pointer' },
   controls: { position: 'absolute', right: 12, top: 12, gap: space.sm },
   button: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
 });

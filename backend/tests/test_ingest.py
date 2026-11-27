@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.config import settings
 from app.models import Bill, IngestState, Notification
@@ -166,3 +166,32 @@ async def test_ingest_keeps_cost_estimates_and_official_related_bills(client, db
     assert labels == ["S. 2", "H.R. 77"]  # identical companion first
     assert out["related"][1]["url"] == "https://www.congress.gov/bill/118th-congress/house-bill/77"
     assert out["related"][1]["relationships"] == ["Related bill"] and out["related"][1]["bill_id"] is None
+
+    # Opening a linked bill the app doesn't have fetches and summarizes it, quietly (it's from an earlier
+    # Congress), then it opens in the app like any other bill.
+    from app.main import app
+    from app.routers.bills import congress_api
+
+    api.text[77] = "Section 1. An earlier try at capping insulin costs."
+    app.dependency_overrides[congress_api] = lambda: api
+    try:
+        before = await db.scalar(select(func.count()).select_from(Notification))
+        r = await client.post(f"/bills/{bill.id}/record/open", headers=h,
+                              json={"congress": 118, "type": "HR", "number": 77})
+        assert r.status_code == 200
+        old = await db.scalar(select(Bill).where(Bill.bill_number == 77))
+        assert str(old.id) == r.json()["bill_id"] and old.congress_number == 118 and old.is_published
+        assert await db.scalar(select(func.count()).select_from(Notification)) == before  # no alerts
+        assert (await client.get(f"/bills/{old.id}", headers=h)).status_code == 200
+        again = await client.get(f"/bills/{bill.id}/record", headers=h)
+        assert again.json()["related"][1]["bill_id"] == str(old.id)
+
+        # Only bills Congress links to this one, and only once they have text.
+        url = f"/bills/{bill.id}/record/open"
+        r = await client.post(url, headers=h, json={"congress": 118, "type": "HR", "number": 5})
+        assert r.status_code == 404
+        api.text[2] = None
+        r = await client.post(url, headers=h, json={"congress": 119, "type": "S", "number": 2})
+        assert r.status_code == 404 and "text" in r.json()["detail"]
+    finally:
+        app.dependency_overrides.pop(congress_api, None)

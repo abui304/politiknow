@@ -22,8 +22,10 @@ export default function StateMapScreen() {
   const { data: info } = useStateDistricts(code);
   const [selected, setSelected] = useState<string | null>(params.district ?? null);
   const [prompt, setPrompt] = useState<DistrictTarget | null>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
 
   const districts = info?.districts ?? [];
+  const districtAt = (x: number, y: number) => map && Object.keys(map.districts).find((d) => pathContains(map.districts[d].path, x, y));
   const current = districts.find((d) => String(d.district) === selected) ?? (districts.length === 1 ? districts[0] : undefined);
 
   return (
@@ -38,11 +40,17 @@ export default function StateMapScreen() {
             initial={stateView(map, params.district ?? null).zoomed ? stateView(map, params.district ?? null).view : undefined}
             maxZoom={10}
             onTap={(x, y) => {
-              const n = Object.keys(map.districts).find((d) => pathContains(map.districts[d].path, x, y));
+              const n = districtAt(x, y);
               if (n === undefined) return;
               setSelected(n);
               setPrompt({ state: code, district: Number(n) });
-            }}>
+            }}
+            onHover={(x, y) => {
+              const n = districtAt(x, y) ?? null;
+              if (n !== hovered) setHovered(n);
+              return n !== null;
+            }}
+            onHoverEnd={() => setHovered(null)}>
             {(view, px) => (
               <StateDistrictsSvg
                 map={map}
@@ -55,6 +63,7 @@ export default function StateMapScreen() {
                 homeColor={PLACE_COLORS.home}
                 followingColor={PLACE_COLORS.following}
                 maxLabels={8}
+                hovered={hovered}
               />
             )}
           </ZoomView>

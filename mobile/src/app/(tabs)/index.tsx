@@ -91,8 +91,8 @@ export default function Feed() {
                     <Icon name="calendar" size={18} color={colors.inkSoft} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Txt style={type.bodyMedium}>This week on the floor</Txt>
-                    <Txt style={type.small}>What the House and Senate vote on next</Txt>
+                    <Txt style={type.bodyMedium}>Floor schedule</Txt>
+                    <Txt style={type.small}>This week’s votes</Txt>
                   </View>
                   <Icon name="chevron-right" size={18} color={colors.muted} />
                 </Tap>

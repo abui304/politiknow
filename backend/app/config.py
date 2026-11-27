@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     ingest_times_utc: list[int] = [6, 12, 18, 23]  # hours of day, 4x daily
     ingest_lookback_days: int = 7  # first run only
     ingest_max_bills_per_run: int = 50  # caps LLM spend per run
+    # Also pull in bills on this week's House and Senate floor schedule, so the calendar links into the app.
+    ingest_floor_bills: bool = True
     ingest_max_members_per_run: int = 100  # legislator photo/office refreshes per run (free API calls)
     max_bill_chars_for_llm: int = 60_000
 
@@ -53,6 +55,8 @@ class Settings(BaseSettings):
     # Abuse prevention (spec 7.3)
     comments_per_hour: int = 10
     votes_per_hour: int = 100
+    # Linked bills fetched and summarized on demand (one OpenAI call each), per person.
+    open_related_per_hour: int = 20
     comment_min_account_age_minutes: int = 60
     reports_to_hide: int = 3
     auto_hide_confidence: float = 0.95

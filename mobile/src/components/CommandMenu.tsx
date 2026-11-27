@@ -44,11 +44,18 @@ const PAGES: Item[] = [
   {
     key: 'p-floor',
     icon: 'calendar',
-    label: 'This week on the floor',
-    detail: 'What the House and Senate vote on next',
+    label: 'Schedule',
+    detail: 'This week’s floor votes',
     href: '/calendar',
   },
   { key: 'p-alerts', icon: 'bell', label: 'Alerts', href: '/notifications' },
+  {
+    key: 'p-glossary',
+    icon: 'book',
+    label: 'Glossary',
+    detail: 'Congress terms, explained',
+    href: '/glossary',
+  },
   {
     key: 'p-map',
     icon: 'map',

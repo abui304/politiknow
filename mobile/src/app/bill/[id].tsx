@@ -5,6 +5,7 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { FollowBillButton, PartyBadge, VoteControl, ZoomTarget } from '@/components/BillCard';
+import { Defined } from '@/components/Glossary';
 import { OfficialRecord } from '@/components/OfficialRecord';
 import { BillVotes } from '@/components/Votes';
 import { BillTimeline } from '@/components/BillTimeline';
@@ -404,10 +405,15 @@ function LatestAction({ text, color }: { text: string; color: string }) {
       accessibilityState={{ expanded: open }}
       accessibilityLabel={`Latest action: ${text}`}
       style={styles.latest}>
-      <Text style={[styles.heroLatest, { color }]} numberOfLines={open ? undefined : 1}>
-        <Text style={{ fontFamily: fonts.medium }}>Latest </Text>
-        {text}
-      </Text>
+      {/* Opened, its Congress terms can be tapped for their meaning. */}
+      {open ? (
+        <Defined style={[styles.heroLatest, { color }]} before={<Text style={{ fontFamily: fonts.medium }}>Latest </Text>} text={text} />
+      ) : (
+        <Text style={[styles.heroLatest, { color }]} numberOfLines={1}>
+          <Text style={{ fontFamily: fonts.medium }}>Latest </Text>
+          {text}
+        </Text>
+      )}
       <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} color={color} />
     </Tap>
   );
@@ -464,8 +470,8 @@ const styles = StyleSheet.create({
     flex: 1,
     ...figures,
   },
-  heroTitle: { fontFamily: fonts.semibold, fontSize: 22, lineHeight: 30 },
-  heroTitleWide: { fontSize: 28, lineHeight: 38 },
+  heroTitle: { fontFamily: fonts.semibold, fontSize: 20, lineHeight: 28 },
+  heroTitleWide: { fontSize: 28, lineHeight: 36 },
   heroSmall: { fontFamily: fonts.medium, fontSize: 12, lineHeight: 16 },
   trending: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   heroMeta: { gap: space.xs },
@@ -536,9 +542,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.medium,
     fontSize: 13,
     lineHeight: 18,
-    letterSpacing: 0.4,
     color: colors.inkSoft,
-    textTransform: 'uppercase',
   },
   related: {
     flexDirection: 'row',

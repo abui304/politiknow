@@ -33,6 +33,7 @@ export default function MapScreen() {
   const home = reps?.home ? key(reps.home) : null;
   const following = (districts ?? []).map(key);
   const [prompt, setPrompt] = useState<DistrictTarget | null>(null);
+  const [hovered, setHovered] = useState<{ state: string } | { district: string } | null>(null);
   const zoomRef = useRef<ZoomHandle>(null);
   const qc = useQueryClient();
   // Tapping a state zooms in on it, far enough that its districts can be tapped.
@@ -72,6 +73,14 @@ export default function MapScreen() {
     }
   };
 
+  // With a mouse: shade what a click would pick, the state when zoomed out, the district when zoomed in.
+  const onHover = (x: number, y: number, unit: number, k: number) => {
+    const next = k < DISTRICT_ZOOM ? stateAt(x, y, unit, k) : districtAt(x, y);
+    const target = next === undefined ? null : k < DISTRICT_ZOOM ? { state: next } : { district: next };
+    setHovered((h) => (JSON.stringify(h) === JSON.stringify(target) ? h : target));
+    return target !== null;
+  };
+
   return (
     <Screen padded={false} edges={['top', 'bottom']}>
       <View style={styles.top}>
@@ -79,8 +88,16 @@ export default function MapScreen() {
       </View>
       <View style={[styles.frame, outline(radius.lg)]}>
         {map ? (
-          <ZoomView ref={zoomRef} base={[0, 0, map.width, map.height]} maxZoom={12} onTap={onTap}>
-            {(view, px, k) => <DetailedNationalMap map={map} view={view} px={px} k={k} home={home} following={following} />}
+          <ZoomView
+            ref={zoomRef}
+            base={[0, 0, map.width, map.height]}
+            maxZoom={12}
+            onTap={onTap}
+            onHover={onHover}
+            onHoverEnd={() => setHovered(null)}>
+            {(view, px, k) => (
+              <DetailedNationalMap map={map} view={view} px={px} k={k} home={home} following={following} hovered={hovered} />
+            )}
           </ZoomView>
         ) : (
           <View style={styles.loading}>
@@ -109,6 +126,7 @@ type DetailedProps = {
   k: number;
   home: string | null;
   following: string[];
+  hovered: { state: string } | { district: string } | null;
 };
 
 /** The national map at the current zoom: zoomed in, the states in view load and draw at full detail

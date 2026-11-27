@@ -3,6 +3,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Defined } from '@/components/Glossary';
 import { SteamCup } from '@/components/SteamCup';
 import { Button, Card, DocketTag, Empty, Icon, Loading, Screen, Tap, TopBar, Txt } from '@/components/ui';
 import { calendarDate } from '@/lib/format';
@@ -19,7 +20,7 @@ export default function Calendar() {
       <ScrollView
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.inkSoft} />}>
-        <TopBar title="This week on the floor" />
+        <TopBar title="Floor schedule" />
         {isLoading ? (
           <Loading label="Checking the schedule…" />
         ) : !week ? (
@@ -83,7 +84,7 @@ function Chamber({
       {groups.length ? (
         groups.map((g) => (
           <Card key={g.heading} style={{ gap: space.md }}>
-            <Txt style={[type.small, { fontFamily: fonts.medium }]}>{g.heading}</Txt>
+            <Defined style={[type.small, { fontFamily: fonts.medium }]} text={g.heading} />
             {g.items.map((item, i) => (
               <Item key={`${item.text}-${i}`} item={item} />
             ))}
@@ -113,21 +114,24 @@ function Item({ item }: { item: FloorItem }) {
   const long = item.text.length > 160;
   return (
     <View style={styles.item}>
-      <Tap
-        disabled={!long}
-        onPress={() => setOpen((o) => !o)}
-        accessibilityRole={long ? 'button' : undefined}
-        accessibilityState={long ? { expanded: open } : undefined}>
-        <Txt style={type.body} numberOfLines={open || !long ? undefined : 3}>
-          {item.text}
-        </Txt>
-      </Tap>
+      {long ? (
+        <Tap onPress={() => setOpen((o) => !o)} accessibilityRole="button" accessibilityState={{ expanded: open }}>
+          <Defined style={type.body} numberOfLines={open ? undefined : 3} text={item.text} />
+        </Tap>
+      ) : (
+        <Defined style={type.body} text={item.text} />
+      )}
       {item.bills.length ? (
         <View style={styles.bills}>
           {item.bills.map((b) => {
             const billId = b.bill_id;
-            return billId ? (
-              <DocketTag key={b.label} label={b.label} onPress={() => router.push({ pathname: '/bill/[id]', params: { id: billId } })} />
+            const url = b.url;
+            if (billId) {
+              return <DocketTag key={b.label} label={b.label} onPress={() => router.push({ pathname: '/bill/[id]', params: { id: billId } })} />;
+            }
+            // Not in PolitiKNOW yet (it's pulled in at the next update): its Congress.gov page in the meantime.
+            return url ? (
+              <DocketTag key={b.label} label={b.label} external onPress={() => WebBrowser.openBrowserAsync(url)} />
             ) : (
               <DocketTag key={b.label} label={b.label} muted />
             );

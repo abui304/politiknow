@@ -40,6 +40,8 @@ import { useWide } from '@/lib/layout';
 import { useToasts } from '@/lib/toast';
 import { APP_MAX_WIDTH, PAGE_MAX_WIDTH, colors, figures, float, fonts, motion, outline, radius, space, spring, type } from '@/theme';
 
+import { GlossaryScope } from './GlossaryScope';
+
 export type IconName = ComponentProps<typeof Feather>['name'];
 
 /** Line icons (Feather), the only icon set in the app. Default 18; 16 inside dense rows. */
@@ -51,6 +53,10 @@ export function Icon({ name, size = 18, color = colors.ink }: { name: IconName; 
 export const HIT_SLOP = 8;
 
 const isWeb = Platform.OS === 'web';
+/** Web: a hovered control changes surface over `motion.fast` instead of snapping. */
+const hoverEase = isWeb
+  ? ({ transitionProperty: 'background-color, border-color', transitionDuration: `${motion.fast}ms` } as object)
+  : null;
 /** ⌘ on Macs, Ctrl elsewhere, for keyboard shortcut hints on web. */
 export const MOD_KEY = isWeb && typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
 
@@ -77,13 +83,15 @@ export function Screen({
   );
   return (
     <SafeAreaView style={styles.screen} edges={edges}>
-      {scroll ? (
-        <ScrollView contentContainerStyle={{ paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
-          {inner}
-        </ScrollView>
-      ) : (
-        inner
-      )}
+      <GlossaryScope>
+        {scroll ? (
+          <ScrollView contentContainerStyle={{ paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
+            {inner}
+          </ScrollView>
+        ) : (
+          inner
+        )}
+      </GlossaryScope>
     </SafeAreaView>
   );
 }
@@ -115,7 +123,8 @@ export function IconButton({ icon, label, onPress }: { icon: IconName; label: st
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={styles.iconBtn}
+      style={[styles.iconBtn, hoverEase]}
+      hoverStyle={styles.hoverWell}
       {...(isWeb ? ({ title: label } as object) : null)}>
       <Icon name={icon} size={20} />
     </Tap>
@@ -201,9 +210,12 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
  * thread and is interruptible: releasing mid-press reverses from wherever it is, it never finishes first.
  * Small targets get HIT_SLOP of extra tappable area by default.
  */
-export function Tap({ style, onPressIn, onPressOut, onPress, hitSlop = HIT_SLOP, ...props }: Omit<PressableProps, 'style'> & {
+export function Tap({ style, hoverStyle, onPressIn, onPressOut, onPress, onHoverIn, onHoverOut, hitSlop = HIT_SLOP, ...props }: Omit<PressableProps, 'style'> & {
   style?: StyleProp<ViewStyle>;
+  /** Web: applied while the pointer is over the control. Keep it to a surface step from the theme. */
+  hoverStyle?: StyleProp<ViewStyle>;
 }) {
+  const [hovered, setHovered] = useState(false);
   const scale = useSharedValue(1);
   const reduce = useReducedMotion();
   const animated = useAnimatedStyle(() => ({
@@ -213,7 +225,15 @@ export function Tap({ style, onPressIn, onPressOut, onPress, hitSlop = HIT_SLOP,
     <AnimatedPressable
       {...props}
       hitSlop={hitSlop}
-      style={[style, animated]}
+      style={[style, hovered && !props.disabled && hoverStyle, animated]}
+      onHoverIn={(e) => {
+        if (hoverStyle) setHovered(true);
+        onHoverIn?.(e);
+      }}
+      onHoverOut={(e) => {
+        setHovered(false);
+        onHoverOut?.(e);
+      }}
       onPressIn={(e) => {
         if (!reduce)
           scale.set(
@@ -256,16 +276,28 @@ type ButtonProps = {
 
 export function Button({ title, onPress, variant = 'primary', color, loading, disabled, icon, size, small, hint, style }: ButtonProps) {
   const s = size ?? (small ? 'small' : 'regular');
-  const bg =
-    color ??
-    {
-      primary: colors.ink,
-      secondary: colors.surface,
-      ghost: 'transparent',
-      danger: colors.danger,
-    }[variant];
-  const fg = variant === 'secondary' || variant === 'ghost' ? colors.ink : '#fff';
   const inactive = disabled || loading;
+  const filled = variant === 'primary' || variant === 'danger';
+  // A disabled button is a quiet well from the paper ramp with muted text, not a faded copy of the live one.
+  const off = Boolean(disabled) && !loading;
+  const bg = off && filled
+    ? colors.surfaceAlt
+    : (color ??
+      {
+        primary: colors.ink,
+        secondary: colors.surface,
+        ghost: 'transparent',
+        danger: colors.danger,
+      }[variant]);
+  const fg = off ? colors.muted : filled ? '#fff' : colors.ink;
+  const hover = color
+    ? undefined
+    : {
+        primary: colors.inkHover,
+        secondary: colors.surfaceAlt,
+        ghost: colors.surfaceAlt,
+        danger: colors.dangerHover,
+      }[variant];
   return (
     <Tap
       onPress={inactive ? undefined : onPress}
@@ -281,10 +313,12 @@ export function Button({ title, onPress, variant = 'primary', color, loading, di
         styles.button,
         s === 'small' && styles.buttonSmall,
         s === 'large' && styles.buttonLarge,
-        { backgroundColor: bg, opacity: inactive ? 0.45 : 1 },
+        { backgroundColor: bg },
         variant === 'secondary' && styles.buttonSecondary,
+        hoverEase,
         style,
-      ]}>
+      ]}
+      hoverStyle={hover ? { backgroundColor: hover } : undefined}>
       {loading ? (
         <ActivityIndicator color={fg} />
       ) : (
@@ -351,23 +385,49 @@ export function Chip({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ selected }}
-      style={chipStyle}>
+      style={[chipStyle, hoverEase]}
+      hoverStyle={selected ? undefined : styles.hoverWell}>
       {content}
     </Tap>
   );
 }
 
 /** A bill or district number (H.R. 1234, WA-8), set like a docket stamp. Tappable when it links somewhere. */
-export function DocketTag({ label, onPress, tint, muted }: { label: string; onPress?: () => void; tint?: string; muted?: boolean }) {
+export function DocketTag({
+  label,
+  onPress,
+  tint,
+  muted,
+  external,
+}: {
+  label: string;
+  onPress?: () => void;
+  tint?: string;
+  muted?: boolean;
+  /** Opens an outside page (Congress.gov) rather than a screen in the app; shows a small arrow. */
+  external?: boolean;
+}) {
   const body = (
-    <Text style={[type.docket, styles.docketText, muted && { color: colors.muted }]} numberOfLines={1}>
-      {label}
-    </Text>
+    <>
+      <Text style={[type.docket, styles.docketText, muted && { color: colors.muted }]} numberOfLines={1}>
+        {label}
+      </Text>
+      {external ? <Icon name="external-link" size={11} color={colors.inkSoft} /> : null}
+    </>
   );
-  const style = [styles.docket, tint ? { backgroundColor: tint, borderColor: tint } : null, muted && styles.docketMuted];
+  const style = [
+    styles.docket,
+    external && styles.docketRow,
+    tint ? { backgroundColor: tint, borderColor: tint } : null,
+    muted && styles.docketMuted,
+  ];
   if (!onPress) return <View style={style}>{body}</View>;
   return (
-    <Tap onPress={onPress} accessibilityRole="link" accessibilityLabel={`Open ${label}`} style={style}>
+    <Tap
+      onPress={onPress}
+      accessibilityRole="link"
+      accessibilityLabel={external ? `Open ${label} on Congress.gov` : `Open ${label}`}
+      style={style}>
       {body}
     </Tap>
   );
@@ -819,6 +879,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  hoverWell: { backgroundColor: colors.surfaceAlt },
   card: { backgroundColor: colors.surface, padding: space.lg, ...outline(radius.lg) },
   keycap: {
     minWidth: 20,
@@ -901,10 +962,12 @@ const styles = StyleSheet.create({
     borderColor: colors.lineStrong,
     backgroundColor: colors.surface,
   },
+  docketRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   docketMuted: { backgroundColor: 'transparent', borderColor: colors.line },
   docketText: { fontSize: 12, lineHeight: 16 },
   input: {
     backgroundColor: colors.surface,
+    minHeight: 48, // the same height as the button beside or below it
     paddingHorizontal: space.lg,
     paddingVertical: space.md,
     fontFamily: fonts.regular,

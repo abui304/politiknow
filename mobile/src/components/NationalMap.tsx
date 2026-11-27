@@ -5,6 +5,7 @@ import Svg, { Circle, G, Line, Path, Rect, Text as SvgText } from 'react-native-
 import type { NationalDetail, NationalMap as NationalMapData } from '@/lib/types';
 import { colors, float, fonts, outline, radius, space } from '@/theme';
 
+import { HoverShade } from './DistrictMap';
 import { Icon, Txt } from './ui';
 import type { Box } from './ZoomView';
 
@@ -28,6 +29,8 @@ type MapSvgProps = {
   zoomed?: boolean;
   /** Full-detail boundaries for some states (those in view when zoomed in), drawn instead of the overview's. */
   detail?: Record<string, NationalDetail>;
+  /** The state or district (a "WA-8" key) under the mouse, shaded so you can see what a click picks. */
+  hovered?: { state: string } | { district: string } | null;
 };
 
 /** Bounding box of a path, from its coordinates. */
@@ -53,7 +56,7 @@ const stateOf = (key: string) => key.split('-')[0];
 
 /** The whole country with district lines. Your district and the districts you follow are filled in,
  *  with a pin so even tiny city districts show up. */
-export function NationalMapSvg({ map, view, px, home, following, zoomed = false, detail = {} }: MapSvgProps) {
+export function NationalMapSvg({ map, view, px, home, following, zoomed = false, detail = {}, hovered = null }: MapSvgProps) {
   const unit = (view[2] - view[0]) / px; // view units per screen pixel
   const marked = [...following.filter((k) => k !== home).map((k) => ({ key: k, color: PLACE_COLORS.following })),
     ...(home ? [{ key: home, color: PLACE_COLORS.home }] : [])].filter((m) => map.districts[m.key]);
@@ -88,6 +91,12 @@ export function NationalMapSvg({ map, view, px, home, following, zoomed = false,
           strokeLinejoin="round"
         />
       ))}
+      {hovered && 'state' in hovered && map.states[hovered.state] ? (
+        <HoverShade d={statePath(hovered.state)} colored={false} unit={unit} />
+      ) : null}
+      {hovered && 'district' in hovered && map.districts[hovered.district] ? (
+        <HoverShade d={districtPath(hovered.district)} colored={marked.some((m) => m.key === hovered.district)} unit={unit} />
+      ) : null}
       {/* State borders again, on top of the districts. */}
       <G fill="none" stroke={colors.ink} strokeWidth={1.2 * unit} strokeLinejoin="round">
         {Object.keys(map.states).map((code) => (

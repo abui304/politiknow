@@ -12,8 +12,8 @@ import type { DigestBill } from '@/lib/types';
 import { colors, figures, fonts, partyColors, space, type } from '@/theme';
 
 /**
- * "Your week in Congress": the weekly recap. Built by fixed rules (followed bills that moved, how your
- * members voted, what passed, what's on the floor), the same for everyone, with nothing chosen by AI.
+ * The weekly recap. Built by fixed rules (followed bills that moved, how your
+ * members voted, what passed, what's coming up that's yours), the same for everyone, with nothing chosen by AI.
  * It ends, on purpose: there's no infinite scroll here.
  */
 export default function DigestScreen() {
@@ -23,7 +23,7 @@ export default function DigestScreen() {
 
   return (
     <Screen scroll>
-      <TopBar title="Your week in Congress" />
+      <TopBar title="Weekly recap" />
       {week ? (
         <Txt style={[type.meta, { marginBottom: space.md }]}>
           {`Week of ${week.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}`}
@@ -76,22 +76,22 @@ export default function DigestScreen() {
         </Section>
       ) : null}
 
-      {data?.floor.length ? (
-        <Section title="On the floor">
-          <View style={styles.floor}>
-            {data.floor.map((f, i) => (
-              <Tap
-                key={`${f.label}-${i}`}
-                disabled={!f.bill_id}
-                onPress={() => f.bill_id && router.push({ pathname: '/bill/[id]', params: { id: f.bill_id } })}
-                style={styles.floorItem}
-                hitSlop={0}>
-                <Txt style={[styles.floorLabel, figures]}>{f.label}</Txt>
-                <Txt style={type.meta}>{f.chamber === 'house' ? 'House' : 'Senate'}</Txt>
-              </Tap>
-            ))}
-          </View>
+      {data?.coming_up.length ? (
+        <Section title="Coming up for a vote">
+          {data.coming_up.map((b) => (
+            <BillLine key={b.id} bill={b} />
+          ))}
         </Section>
+      ) : null}
+
+      {data && !data.is_empty && data.floor_count ? (
+        <Tap onPress={() => router.push('/calendar')} accessibilityRole="link" style={styles.calendarLink} hitSlop={0}>
+          <Icon name="calendar" size={16} color={colors.inkSoft} />
+          <Txt style={[type.small, { flex: 1 }]}>
+            {data.floor_count === 1 ? '1 bill is' : `${data.floor_count} bills are`} on this week’s floor schedule
+          </Txt>
+          <Icon name="chevron-right" size={16} color={colors.muted} />
+        </Tap>
       ) : null}
 
       {data && !data.is_empty ? (
@@ -99,7 +99,7 @@ export default function DigestScreen() {
           <Txt style={type.bodyMedium}>That’s your week.</Txt>
           <Txt style={type.small}>
             Every item here is picked by the same rules for everyone: bills you follow first, then your members’ votes,
-            then what passed. Nothing is chosen by AI.
+            then what passed, then scheduled votes on bills that are yours. Nothing is chosen by AI.
           </Txt>
           <EmailOptIn />
         </View>
@@ -166,9 +166,16 @@ const styles = StyleSheet.create({
   bill: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md, borderTopWidth: 1, borderTopColor: colors.line },
   label: { paddingHorizontal: space.sm, paddingVertical: 2, minWidth: 76, alignItems: 'center', borderRadius: 4, borderCurve: 'continuous' },
   labelText: { fontFamily: fonts.medium, fontSize: 12, lineHeight: 18, ...figures },
-  floor: { borderTopWidth: 1, borderTopColor: colors.line },
-  floorItem: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.sm, borderBottomWidth: 1, borderBottomColor: colors.line },
-  floorLabel: { flex: 1, fontFamily: fonts.medium, fontSize: 14, lineHeight: 20, color: colors.ink },
+  calendarLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    marginTop: space.lg,
+    paddingVertical: space.md,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.line,
+  },
   end: { gap: space.sm, marginTop: space.xxl, paddingTop: space.lg, borderTopWidth: 1, borderTopColor: colors.ink },
   optIn: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md },
 });
