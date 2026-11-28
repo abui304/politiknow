@@ -92,7 +92,7 @@ Every item is picked by the same published rules for everyone; nothing is chosen
     return page, "\n".join(text)
 
 
-async def send(to: str, subj: str, html_body: str, text_body: str, unsubscribe: str) -> bool:
+async def send(to: str, subj: str, html_body: str, text_body: str, unsubscribe: str | None = None) -> bool:
     if not settings.brevo_api_key:
         return False
     payload = {
@@ -101,12 +101,16 @@ async def send(to: str, subj: str, html_body: str, text_body: str, unsubscribe: 
         "subject": subj,
         "htmlContent": html_body,
         "textContent": text_body,
-        "headers": {"List-Unsubscribe": f"<{unsubscribe}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"},
     }
+    if unsubscribe:  # Mail people asked for (the recap), not account mail like a confirmation link.
+        payload["headers"] = {
+            "List-Unsubscribe": f"<{unsubscribe}>",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        }
     async with httpx.AsyncClient(timeout=20) as http:
         resp = await http.post(BREVO_URL, json=payload, headers={"api-key": settings.brevo_api_key})
     if resp.status_code >= 300:
-        log.warning("Recap email to user failed: %s %s", resp.status_code, resp.text[:200])
+        log.warning("Email failed: %s %s", resp.status_code, resp.text[:200])
         return False
     return True
 
@@ -140,3 +144,23 @@ async def send_recaps(db: AsyncSession, sender=send) -> dict:
         await db.commit()
     await db.commit()
     return {"sent": sent, "empty": empty, "failed": failed}
+
+
+def confirmation(link: str) -> tuple[str, str, str]:
+    """Subject, HTML and plain text for the email that confirms a new account's address."""
+    subject = "Confirm your email for PolitiKNOW"
+    page = f"""<!doctype html><html><body style="margin:0;background:{PAPER}">
+<div style="max-width:480px;margin:0 auto;padding:32px 24px;font-family:Georgia,serif;color:{INK}">
+<p style="font-size:20px;margin:0 0 16px">Confirm your email</p>
+<p style="font-size:15px;line-height:1.5;margin:0 0 24px">Tap the button to finish setting up your PolitiKNOW account.
+The link works for 2 days.</p>
+<p style="margin:0 0 24px"><a href="{link}" style="display:inline-block;background:{INK};color:#fff;
+text-decoration:none;padding:12px 20px;border-radius:8px;font-size:15px">Confirm email</a></p>
+<p style="color:{SOFT};font-size:12px;line-height:1.5">If you didn’t sign up for PolitiKNOW, ignore this email
+and no account will be activated.</p>
+</div></body></html>"""
+    text = (
+        f"Confirm your email for PolitiKNOW:\n{link}\n\n"
+        "The link works for 2 days. If you didn’t sign up, ignore this email."
+    )
+    return subject, page, text

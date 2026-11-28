@@ -90,12 +90,23 @@ class Settings(BaseSettings):
     brevo_api_key: str = ""
     email_from: str = "recap@example.com"
     email_from_name: str = "PolitiKNOW"
+
+    # Sign-up email checks. With Brevo set up, new email accounts must click a confirmation link before
+    # using the app; without it (local development) nobody is asked to confirm.
+    require_email_confirmation: bool = True
+    check_email_domains: bool = True  # turn away throwaway inboxes and domains that can't receive mail
+    email_dns_timeout: float = 3.0
+    confirmation_emails_per_hour: int = 5
     email_daily_cap: int = 300  # Brevo's free plan; a run stops here and the next day's run continues
 
     @field_validator("database_url")
     @classmethod
     def _async_driver(cls, url: str) -> str:
         return async_database_url(url)
+
+    @property
+    def email_confirmation_on(self) -> bool:
+        return self.require_email_confirmation and bool(self.brevo_api_key)
 
     @property
     def is_local(self) -> bool:

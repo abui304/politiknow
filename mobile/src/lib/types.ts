@@ -5,6 +5,8 @@ export type Tokens = {
   refresh_token: string;
   needs_display_name: boolean;
   needs_onboarding: boolean;
+  /** Must click the confirmation link before using the app. */
+  needs_email_check?: boolean;
 };
 
 export type NotificationType = 'new_bill' | 'status_update' | 'trending' | 'social' | 'legislator' | 'member_vote';
@@ -24,6 +26,7 @@ export type Me = {
   notification_preferences: NotificationPrefs;
   is_premium: boolean;
   email_verified: boolean;
+  needs_email_check?: boolean;
   follower_count: number;
   following_count: number;
   /** Private: the user's own district (0 = at-large or delegate). */

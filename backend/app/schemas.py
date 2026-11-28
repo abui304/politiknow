@@ -42,6 +42,7 @@ class TokensOut(BaseModel):
     refresh_token: str
     needs_display_name: bool
     needs_onboarding: bool
+    needs_email_check: bool = False  # must click the confirmation link before using the app
 
 
 # ---------- users ----------
@@ -76,6 +77,7 @@ class MeOut(BaseModel):
     notification_preferences: NotificationPrefs
     is_premium: bool
     email_verified: bool
+    needs_email_check: bool = False
     follower_count: int
     following_count: int
     # Private to the user: their district, from their location or picked on the map.

@@ -59,7 +59,17 @@ async def record_activity(db: AsyncSession, user: User, client: str | None) -> N
     await db.commit()
 
 
+def needs_email_check(user: User) -> bool:
+    """An account whose email address hasn't been confirmed yet, while confirmation is required."""
+    from app.config import settings
+
+    return settings.email_confirmation_on and not user.email_verified
+
+
 async def get_current_user(user: Annotated[User, Depends(get_user_allow_incomplete)]) -> User:
+    # Nothing else works until the email is confirmed; the app shows the "check your inbox" screen instead.
+    if needs_email_check(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "email_unconfirmed")
     # Spec 6.2: choosing a display name is mandatory regardless of auth method.
     if not user.display_name:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "display_name_required")

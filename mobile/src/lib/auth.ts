@@ -7,8 +7,9 @@ const ACCESS = 'pk.access';
 const REFRESH = 'pk.refresh';
 const STAGE = 'pk.stage';
 
-/** Where the user is in sign-up: picking a display name, picking topics, finding their members of Congress, or done. */
-export type Stage = 'needs_name' | 'needs_topics' | 'needs_place' | 'ready';
+/** Where the user is in sign-up: confirming their email, picking a display name, picking topics, finding their
+ *  members of Congress, or done. */
+export type Stage = 'needs_email' | 'needs_name' | 'needs_topics' | 'needs_place' | 'ready';
 
 type AuthState = {
   hydrated: boolean;
@@ -22,6 +23,7 @@ type AuthState = {
 };
 
 function stageFrom(t: Tokens): Stage {
+  if (t.needs_email_check) return 'needs_email';
   if (t.needs_display_name) return 'needs_name';
   if (t.needs_onboarding) return 'needs_topics';
   return 'ready';

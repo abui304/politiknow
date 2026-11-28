@@ -41,7 +41,8 @@ function errorMessage(body: unknown, status: number): string {
 
 let refreshing: Promise<boolean> | null = null;
 
-async function refreshTokens(): Promise<boolean> {
+/** Gets fresh tokens, which also re-reads where the user is in sign-up (e.g. after confirming their email). */
+export async function refreshTokens(): Promise<boolean> {
   const { refreshToken, setTokens, signOut } = useAuth.getState();
   if (!refreshToken) return false;
   try {
@@ -113,6 +114,11 @@ export async function api<T = unknown>(path: string, opts: Options = {}, retried
   }
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => null);
+  // The account's email isn't confirmed yet: show the "check your inbox" screen.
+  if (res.status === 403 && (data as { detail?: string })?.detail === 'email_unconfirmed') {
+    void useAuth.getState().setStage('needs_email');
+    throw new ApiError(403, 'Confirm your email to continue.');
+  }
   if (!res.ok) throw new ApiError(res.status, errorMessage(data, res.status));
   return data as T;
 }

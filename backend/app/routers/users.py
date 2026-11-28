@@ -4,7 +4,7 @@ import uuid
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import delete, func, select
 
-from app.deps import DB, CurrentUser, IncompleteUser
+from app.deps import DB, CurrentUser, IncompleteUser, needs_email_check
 from app.models import Bill, BillFollow, Comment, CommentVote, Follow, Legislator, LegislatorFollow, User, Vote
 from app.routers.auth import display_name_taken
 from app.schemas import (
@@ -40,6 +40,7 @@ async def _me(db, user: User) -> MeOut:
         notification_preferences=NotificationPrefs.model_validate(user.notification_preferences or {}),
         is_premium=user.is_premium,
         email_verified=user.email_verified,
+        needs_email_check=needs_email_check(user),
         follower_count=followers,
         following_count=following,
         home_state=user.home_state,

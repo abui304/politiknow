@@ -116,6 +116,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/register': 'Create your account',
   '/about': 'Privacy and neutrality',
   '/glossary': 'Glossary',
+  '/verify': 'Confirm your email',
+  '/onboarding/email': 'Check your email',
   '/settings': 'Settings',
   '/calendar': 'Floor schedule',
   '/digest': 'Weekly recap',
@@ -207,6 +209,9 @@ export default function RootLayout() {
                 <Stack.Screen name="login" />
                 <Stack.Screen name="register" />
               </Stack.Protected>
+              <Stack.Protected guard={signedIn && stage === 'needs_email'}>
+                <Stack.Screen name="onboarding/email" />
+              </Stack.Protected>
               <Stack.Protected guard={signedIn && stage === 'needs_name'}>
                 <Stack.Screen name="onboarding/name" />
               </Stack.Protected>
@@ -233,6 +238,7 @@ export default function RootLayout() {
               {/* Open to everyone. Listed last: signed-out visitors land on the first screen they're allowed. */}
               <Stack.Screen name="about" />
               <Stack.Screen name="glossary" />
+              <Stack.Screen name="verify" />
             </Stack>
             <Toaster />
             {signedIn && stage === 'ready' ? <CommandMenu /> : null}

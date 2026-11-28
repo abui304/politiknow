@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { StyleSheet, TextInput, View } from 'react-native';
 
 import { Button, Card, Field, Screen, Title, TopBar, Txt } from '@/components/ui';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { NAME_RE } from '@/lib/format';
 import { toastError } from '@/lib/toast';
@@ -16,6 +16,8 @@ export default function Register() {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  // The server turned this address away (a throwaway inbox, or a domain that can't receive mail).
+  const [emailProblem, setEmailProblem] = useState<{ email: string; message: string } | null>(null);
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
 
@@ -32,7 +34,12 @@ export default function Register() {
       });
       await setTokens(tokens);
     } catch (e) {
-      toastError(e);
+      if (e instanceof ApiError && e.status === 422 && /email|mail/i.test(e.message)) {
+        setEmailProblem({ email, message: e.message });
+        emailRef.current?.focus();
+      } else {
+        toastError(e);
+      }
     } finally {
       setBusy(false);
     }
@@ -71,7 +78,9 @@ export default function Register() {
           onSubmitEditing={() => passwordRef.current?.focus()}
           ref={emailRef}
           placeholder="you@example.com"
+          error={emailProblem && emailProblem.email === email ? emailProblem.message : undefined}
         />
+        <Txt style={type.meta}>We’ll send a link to confirm it’s yours.</Txt>
         <Field
           label="Password"
           value={password}

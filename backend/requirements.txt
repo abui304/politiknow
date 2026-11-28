@@ -16,3 +16,5 @@ google-auth>=2.30
 beautifulsoup4>=4.12
 blurhash-python>=1.2
 pillow>=10.0
+disposable-email-domains>=0.0.100
+dnspython>=2.6

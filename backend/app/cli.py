@@ -17,6 +17,8 @@
   python -m app.cli build-maps    # rebuild app/data/maps from Census boundaries (free; dev requirements)
   python -m app.cli make-moderator <display_name>    # give someone the moderation dashboard
   python -m app.cli remove-moderator <display_name>
+  python -m app.cli copy-public-record '<hosted database url>'  # copy bills, summaries, members and votes
+                                # (no accounts or demo data) from this database to another (free; see DEPLOY.md)
 """
 
 import asyncio
@@ -237,6 +239,12 @@ async def main(cmd: str, *args: str) -> None:
         elif cmd == "backfill-blurhash":
             from app.services import blurhash
             print(f"Added {await blurhash.backfill(db)} photo placeholders.")
+        elif cmd == "copy-public-record" and len(args) == 1:
+            from app.services.copy_record import copy_public_record
+
+            print("Copying the public record (no accounts, no demo data)…")
+            await copy_public_record(args[0])
+            print("Done.")
         elif cmd in ("make-moderator", "remove-moderator") and len(args) == 1:
             await set_moderator(db, args[0], cmd == "make-moderator")
         elif cmd in ("sync-members", "sync-roster"):

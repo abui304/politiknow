@@ -5,6 +5,8 @@ os.environ["REDIS_URL"] = "redis://localhost:6379/15"
 os.environ["OPENAI_API_KEY"] = ""
 os.environ["BCRYPT_ROUNDS"] = "4"
 os.environ["INGEST_FLOOR_BILLS"] = "false"
+os.environ["CHECK_EMAIL_DOMAINS"] = "false"  # no DNS lookups in tests; test_email_checks turns it on
+os.environ["BREVO_API_KEY"] = ""
 os.environ["COMMENT_MIN_ACCOUNT_AGE_MINUTES"] = "0"
 
 import pytest  # noqa: E402

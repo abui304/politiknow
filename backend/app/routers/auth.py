@@ -2,14 +2,15 @@ import logging
 import secrets
 import uuid
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from app.config import settings
-from app.deps import DB, RedisDep
+from app.deps import DB, IncompleteUser, RedisDep, needs_email_check
 from app.models import AuthProvider, User
+from app.ratelimit import enforce_hourly_limit
 from app.schemas import GoogleIn, LoginIn, RefreshIn, RegisterIn, TokensOut
 from app.security import (
     consume_refresh_token,
@@ -30,6 +31,7 @@ async def _tokens(redis, user: User) -> TokensOut:
         refresh_token=await create_refresh_token(redis, user.id),
         needs_display_name=not user.display_name,
         needs_onboarding=not (user.onboarded or user.onboarding_tags),
+        needs_email_check=needs_email_check(user),
     )
 
 
@@ -37,17 +39,32 @@ async def display_name_taken(db, name: str) -> bool:
     return bool(await db.scalar(select(User.id).where(func.lower(User.display_name) == name.lower())))
 
 
+CONFIRM_TTL = 2 * 86400  # the link works for 2 days
+
+
 async def _send_verification(redis, user: User) -> None:
-    # No email provider is configured (sending email costs money), so the link is logged.
-    # Swap this for a real sender (e.g. SES, Resend) when you're ready.
+    """Emails a one-time confirmation link through Brevo. Without Brevo (local development) the link is
+    logged instead, and confirming isn't required."""
     token = secrets.token_urlsafe(32)
-    await redis.set(f"verify:{token}", str(user.id), ex=86400)
-    log.warning("Email verification for %s: token=%s", user.email, token)
+    await redis.set(f"verify:{token}", str(user.id), ex=CONFIRM_TTL)
+    link = f"{settings.web_url.rstrip('/')}/verify?token={token}"
+    if not settings.brevo_api_key or not user.email:
+        log.warning("Email confirmation link for %s: %s", user.email, link)
+        return
+    from app.services import email
+
+    subject, page, text = email.confirmation(link)
+    if not await email.send(user.email, subject, page, text):
+        log.warning("Couldn't send the confirmation email for user %s", user.id)
 
 
 @router.post("/register", response_model=TokensOut, status_code=status.HTTP_201_CREATED)
-async def register(body: RegisterIn, db: DB, redis: RedisDep):
+async def register(body: RegisterIn, db: DB, redis: RedisDep, background: BackgroundTasks):
     email = body.email.lower()
+    from app.services.email_checks import problem_with
+
+    if problem := await problem_with(email):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, problem)
     if await db.scalar(select(User.id).where(User.email == email)):
         raise HTTPException(status.HTTP_409_CONFLICT, "An account with that email already exists")
     if await display_name_taken(db, body.display_name):
@@ -60,7 +77,8 @@ async def register(body: RegisterIn, db: DB, redis: RedisDep):
     )
     db.add(user)
     await db.commit()
-    await _send_verification(redis, user)
+    # Sent after the response, so signing up doesn't wait on the email service.
+    background.add_task(_send_verification, redis, user)
     return await _tokens(redis, user)
 
 
@@ -124,6 +142,15 @@ async def logout(body: RefreshIn, redis: RedisDep):
 
 class VerifyIn(BaseModel):
     token: str
+
+
+@router.post("/resend-confirmation", status_code=status.HTTP_204_NO_CONTENT)
+async def resend_confirmation(user: IncompleteUser, redis: RedisDep):
+    """Sends a fresh confirmation link. Earlier links keep working until they expire."""
+    if user.email_verified or not user.email:
+        return
+    await enforce_hourly_limit(redis, "confirm_email", user.id, settings.confirmation_emails_per_hour)
+    await _send_verification(redis, user)
 
 
 @router.post("/verify-email", status_code=status.HTTP_204_NO_CONTENT)
