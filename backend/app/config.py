@@ -1,7 +1,27 @@
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEV_JWT_SECRET = "dev-only-change-me"
+
+
+def async_database_url(url: str) -> str:
+    """Accepts a connection string as hosts hand it out (Neon: postgresql://...?sslmode=require&channel_binding=
+    require) and returns the form the async driver needs: postgresql+asyncpg://...?ssl=require."""
+    parts = urlsplit(url)
+    scheme = parts.scheme
+    if scheme in ("postgres", "postgresql"):
+        scheme = "postgresql+asyncpg"
+    query = []
+    for key, value in parse_qsl(parts.query, keep_blank_values=True):
+        if key == "sslmode":
+            query.append(("ssl", value))
+        elif key not in ("channel_binding", "options"):
+            query.append((key, value))
+    return urlunsplit((scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
 class Settings(BaseSettings):
@@ -23,7 +43,7 @@ class Settings(BaseSettings):
     serverless: bool = False
 
     # Auth (spec 6.1)
-    jwt_secret: str = "dev-only-change-me"
+    jwt_secret: str = DEV_JWT_SECRET
     access_token_minutes: int = 15
     refresh_token_days: int = 30
     bcrypt_rounds: int = 12
@@ -71,6 +91,16 @@ class Settings(BaseSettings):
     email_from: str = "recap@example.com"
     email_from_name: str = "PolitiKNOW"
     email_daily_cap: int = 300  # Brevo's free plan; a run stops here and the next day's run continues
+
+    @field_validator("database_url")
+    @classmethod
+    def _async_driver(cls, url: str) -> str:
+        return async_database_url(url)
+
+    @property
+    def is_local(self) -> bool:
+        host = urlsplit(self.database_url).hostname or ""
+        return host in ("localhost", "127.0.0.1", "::1", "") or host.endswith(".local")
 
 
 @lru_cache

@@ -1,0 +1,10 @@
+# Not needed by the deployed API: keeps the function small.
+.venv/
+tests/
+__pycache__/
+*.pyc
+dump.rdb
+.env
+.env.*
+run_worker.sh
+requirements-dev.txt

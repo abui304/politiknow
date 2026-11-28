@@ -291,10 +291,7 @@ The full list is in `backend/app/config.py`.
 
 ## Hosting (free tiers)
 
-- **Website:** Vercel's free plan, from `cd mobile && npx expo export -p web` (set `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_WEB_URL`).
-- **API:** any Python host. With a pooled Postgres (Neon) set `SERVERLESS=true`.
-- **Database and cache:** Neon Postgres (free) and Upstash Redis (free).
-- **Scheduled jobs:** `.github/workflows/jobs.yml` runs ingest 4 times a day, nightly cleanup, and Saturday recap emails. Add the secrets it lists under the repository's Settings → Secrets and variables → Actions. Free for public repositories; private ones get a monthly allowance.
+Website and API on Vercel, Postgres on Neon, Redis on Upstash, scheduled jobs on GitHub Actions: all free except OpenAI. **[DEPLOY.md](DEPLOY.md)** walks through it step by step.
 
 ## Measuring retention
 

@@ -2,6 +2,31 @@
 name = "politiknow-backend"
 version = "1.0.0"
 requires-python = ">=3.11"
+# Keep in step with requirements.txt (a test checks). Vercel installs from this list.
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy[asyncio]>=2.0.30",
+    "asyncpg>=0.29",
+    "psycopg[binary]>=3.2",
+    "alembic>=1.13",
+    "pydantic-settings>=2.3",
+    "email-validator>=2.1",
+    "pyjwt>=2.8",
+    "bcrypt>=4.1",
+    "redis>=5.0",
+    "celery>=5.4",
+    "httpx>=0.27",
+    "openai>=1.40",
+    "google-auth>=2.30",
+    "beautifulsoup4>=4.12",
+    "blurhash-python>=1.2",
+    "pillow>=10.0",
+]
+
+[tool.vercel]
+# The API as one Vercel Function (see DEPLOY.md).
+entrypoint = "app.main:app"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

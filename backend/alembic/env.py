@@ -74,6 +74,8 @@ async def run_async_migrations() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        # Through a pooler (Neon's, PgBouncer) prepared statements can't be cached between transactions.
+        connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0} if settings.serverless else {},
     )
 
     async with connectable.connect() as connection:

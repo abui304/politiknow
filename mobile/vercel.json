@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "npm ci",
+  "buildCommand": "npx expo export -p web",
+  "outputDirectory": "dist",
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/bill/:id", "destination": "/bill/[id]" },
+    { "source": "/legislator/:id", "destination": "/legislator/[id]" },
+    { "source": "/cosponsors/:id", "destination": "/cosponsors/[id]" },
+    { "source": "/user/:id", "destination": "/user/[id]" },
+    { "source": "/state/:code", "destination": "/state/[code]" },
+    { "source": "/state-map/:code", "destination": "/state-map/[code]" }
+  ]
+}
