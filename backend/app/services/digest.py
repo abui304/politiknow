@@ -44,6 +44,8 @@ class Digest:
     passed: list[tuple[Bill, str]] = field(default_factory=list)
     coming_up: list[tuple[Bill, str]] = field(default_factory=list)
     floor_count: int = 0  # bills on this week's schedule in all
+    # Whether we know your members (you've set a district), so the votes section can say "none this week".
+    has_members: bool = False
     # Sponsor party of every bill picked by rules 1 and 3, as a neutrality check (logged, not shown).
     party_mix: dict[str, int] = field(default_factory=dict)
 
@@ -85,6 +87,7 @@ async def build(db: AsyncSession, user: User, day: date | None = None, floor_wee
 
     # 2. How your members voted (final passage and cloture).
     ids = await members_of(db, user)
+    digest.has_members = bool(ids)
     if ids:
         rcs = list(await db.scalars(
             select(RollCall).where(

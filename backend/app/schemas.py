@@ -350,6 +350,8 @@ class DigestOut(BaseModel):
     # Bills on this week's floor schedule that you follow, are about your topics, or your members sponsored.
     coming_up: list[DigestBill]
     floor_count: int  # every bill on this week's schedule, for the link to the full calendar
+    # You've set a district, so the app knows your members: the votes section shows even on a week without votes.
+    has_members: bool = False
     is_empty: bool
 
 

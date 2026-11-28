@@ -37,6 +37,7 @@ async def get_digest(db: DB, redis: RedisDep, user: CurrentUser, week: date | No
         passed=[_bill(b, w) for b, w in d.passed],
         coming_up=[_bill(b, w) for b, w in d.coming_up],
         floor_count=d.floor_count,
+        has_members=d.has_members,
         is_empty=d.is_empty,
     )
 

@@ -374,6 +374,8 @@ export type Digest = {
   coming_up: DigestBill[];
   /** Every bill on this week's schedule (the full list is on the calendar). */
   floor_count: number;
+  /** The user has set a district, so the recap always says how their members voted, even "none this week". */
+  has_members?: boolean;
   is_empty: boolean;
 };
 

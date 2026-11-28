@@ -49,8 +49,13 @@ export default function DigestScreen() {
         </Section>
       ) : null}
 
-      {data?.votes.length ? (
+      {data && (data.votes.length || data.has_members) ? (
         <Section title="How your members voted">
+          {data.votes.length ? null : (
+            <Txt style={[type.body, { color: colors.inkSoft }]}>
+              Your members cast no votes on final passage or cloture this week.
+            </Txt>
+          )}
           {data.votes.map((rc) => (
             <View key={rc.id}>
               <RollCallCard rc={rc} showMeasure />
@@ -65,6 +70,11 @@ export default function DigestScreen() {
               ) : null}
             </View>
           ))}
+          <Tap onPress={() => router.push('/profile')} accessibilityRole="link" style={styles.calendarLink} hitSlop={0}>
+            <Icon name="user" size={16} color={colors.inkSoft} />
+            <Txt style={[type.small, { flex: 1 }]}>All their recent votes</Txt>
+            <Icon name="chevron-right" size={16} color={colors.muted} />
+          </Tap>
         </Section>
       ) : null}
 

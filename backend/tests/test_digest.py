@@ -44,7 +44,7 @@ async def test_recap_follows_the_published_order(client, db):
     assert [(b["title"], b["what"]) for b in out["followed"]] == [("Followed Bill", "Passed House")]
     assert [b["title"] for b in out["passed"]] == ["Passed Elsewhere"]  # a followed bill isn't listed twice
     assert out["votes"] and all(v["kind"] in ("passage", "cloture") for v in out["votes"])
-    assert not out["is_empty"]
+    assert out["has_members"] and not out["is_empty"]
 
     d = await build(db, user, TODAY)
     assert d.party_mix == {"D": 1, "R": 1}
@@ -54,6 +54,18 @@ async def test_a_quiet_week_is_empty(client, db):
     h = await signup(client, "reader")
     out = (await client.get("/digest", headers=h)).json()
     assert out["is_empty"] and out["followed"] == [] and out["passed"] == []
+    assert not out["has_members"]  # no district yet, so no "how your members voted" section
+
+
+async def test_members_section_shows_on_a_week_without_votes(client, db):
+    await _members(db)
+    h = await signup(client, "homebody")
+    user = await _user(db, "homebody")
+    user.home_state, user.home_district = "WA", 8
+    await db.commit()
+    out = (await client.get("/digest", headers=h)).json()
+    # The app shows "your members cast no votes on final passage or cloture this week" instead of hiding it.
+    assert out["has_members"] and out["votes"] == []
 
 
 async def test_coming_up_lists_only_your_scheduled_bills(client, db, monkeypatch):
